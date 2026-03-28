@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proxie Agent — Your AI Recruiting Agent</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --dark:    #1a1a2e;
+      --dark2:   #16213e;
+      --accent:  #e53e3e;
+      --accent2: #3182ce;
+      --green:   #38a169;
+      --text:    #1a202c;
+      --muted:   #718096;
+      --border:  #e2e8f0;
+      --white:   #ffffff;
+      --bg:      #f7fafc;
+      --font: 'Inter', sans-serif;
+    }
+    html, body { height: 100%; font-family: var(--font); color: var(--text); background: var(--bg); }
+
+    /* ── LAYOUT ── */
+    .page { display: none; }
+    .page.active { display: flex; min-height: 100vh; }
+
+    /* ── SPLASH ── */
+    #page-splash { flex-direction: column; }
+
+    .splash-nav {
+      background: var(--dark);
+      padding: 0 40px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 12px; }
+    .nav-logo .logo-icon {
+      width: 36px; height: 36px; background: var(--accent);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; color: white;
+    }
+    .nav-logo span { color: white; font-weight: 700; font-size: 18px; }
+    .nav-actions { display: flex; gap: 12px; }
+    .btn-nav {
+      padding: 8px 20px; border-radius: 6px; font-size: 14px;
+      font-family: var(--font); font-weight: 500; cursor: pointer;
+      transition: all 0.15s; border: 1px solid transparent;
+    }
+    .btn-ghost { background: transparent; color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.2); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); color: white; }
+    .btn-solid { background: var(--accent); color: white; }
+    .btn-solid:hover { background: #c53030; }
+
+    .splash-hero {
+      background: var(--dark);
+      padding: 80px 40px;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+    .splash-hero h1 {
+      font-size: 48px; font-weight: 700; color: white;
+      line-height: 1.15; margin-bottom: 20px; letter-spacing: -1px;
+    }
+    .splash-hero h1 span { color: var(--accent); }
+    .splash-hero p { font-size: 18px; color: rgba(255,255,255,0.7); max-width: 560px; margin: 0 auto 36px; line-height: 1.6; }
+    .hero-cta { display: flex; gap: 14px; justify-content: center; }
+    .btn-hero {
+      padding: 14px 32px; border-radius: 8px; font-size: 15px;
+      font-family: var(--font); font-weight: 600; cursor: pointer;
+      transition: all 0.15s; border: none;
+    }
+    .btn-hero-primary { background: var(--accent); color: white; }
+    .btn-hero-primary:hover { background: #c53030; transform: translateY(-1px); }
+    .btn-hero-secondary { background: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(255,255,255,0.25); }
+    .btn-hero-secondary:hover { background: rgba(255,255,255,0.2); }
+
+    .splash-features {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 24px; padding: 60px 80px; background: white;
+    }
+    .feature-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 12px; padding: 28px;
+    }
+    .feature-icon { font-size: 32px; margin-bottom: 14px; }
+    .feature-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    .splash-stats {
+      background: var(--dark2); padding: 48px 80px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+      text-align: center;
+    }
+    .stat-item { padding: 0 20px; border-right: 1px solid rgba(255,255,255,0.1); }
+    .stat-item:last-child { border-right: none; }
+    .stat-num { font-size: 36px; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px; }
+
+    .splash-footer {
+      background: var(--dark); padding: 24px 40px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 13px; color: rgba(255,255,255,0.4);
+    }
+
+    /* ── AUTH PAGES (login + register) ── */
+    #page-login, #page-register { flex-direction: row; }
+
+    .auth-left {
+      width: 45%; background: var(--dark);
+      display: flex; flex-direction: column;
+      justify-content: center; padding: 60px;
+    }
+    .auth-left .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+    .auth-left .logo .icon {
+      width: 40px; height: 40px; background: var(--accent);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px; color: white;
+    }
+    .auth-left .logo span { color: white; font-weight: 700; font-size: 20px; }
+    .auth-left h2 { font-size: 32px; font-weight: 700; color: white; margin-bottom: 12px; line-height: 1.2; }
+    .auth-left p { font-size: 15px; color: rgba(255,255,255,0.55); line-height: 1.7; }
+    .auth-points { margin-top: 32px; display: flex; flex-direction: column; gap: 14px; }
+    .auth-point { display: flex; align-items: flex-start; gap: 12px; }
+    .auth-point-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex-shrink: 0; }
+    .auth-point-text { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.5; }
+
+    .auth-right {
+      flex: 1; display: flex; align-items: center;
+      justify-content: center; padding: 60px 40px; background: var(--bg);
+    }
+    .auth-card {
+      width: 100%; max-width: 400px; background: white;
+      border-radius: 12px; border: 1px solid var(--border);
+      padding: 36px;
+    }
+    .auth-card h3 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .auth-card .auth-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+    .form-group input {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 14px; font-family: var(--font);
+      color: var(--text); outline: none; transition: border-color 0.15s;
+    }
+    .form-group input:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(49,130,206,0.1); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .btn-auth {
+      width: 100%; padding: 12px; border-radius: 6px; font-size: 15px;
+      font-family: var(--font); font-weight: 600; cursor: pointer;
+      transition: all 0.15s; border: none; margin-top: 4px;
+    }
+    .btn-auth-primary { background: var(--accent); color: white; }
+    .btn-auth-primary:hover { background: #c53030; }
+    .btn-auth-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .auth-switch { text-align: center; margin-top: 20px; font-size: 14px; color: var(--muted); }
+    .auth-switch a { color: var(--accent2); cursor: pointer; text-decoration: none; font-weight: 500; }
+    .auth-switch a:hover { text-decoration: underline; }
+
+    .auth-error {
+      background: #fff5f5; border: 1px solid #fed7d7; border-radius: 6px;
+      padding: 10px 14px; font-size: 13px; color: #c53030;
+      margin-bottom: 16px; display: none;
+    }
+    .auth-error.show { display: block; }
+
+    /* ── ADMIN PORTAL ── */
+    #page-admin { flex-direction: row; }
+    .admin-sidebar {
+      width: 220px; background: var(--dark);
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .admin-sidebar .logo-area {
+      padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .admin-sidebar .logo-area .li {
+      width: 32px; height: 32px; background: var(--accent);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px; color: white;
+    }
+    .admin-sidebar .logo-area .lt { font-size: 14px; font-weight: 700; color: white; }
+    .admin-sidebar .logo-area .ls { font-size: 10px; color: rgba(255,255,255,0.4); }
+    .admin-nav { padding: 8px 0; flex: 1; }
+    .admin-nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; color: rgba(255,255,255,0.6);
+      font-size: 13px; cursor: pointer; transition: all 0.15s;
+      border-left: 3px solid transparent;
+    }
+    .admin-nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+    .admin-nav-item.active { background: rgba(255,255,255,0.08); color: white; border-left-color: var(--accent); }
+    .admin-nav-section { padding: 14px 16px 4px; font-size: 9px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 1px; }
+    .admin-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+    .admin-user-pill {
+      background: rgba(255,255,255,0.06); border-radius: 6px; padding: 8px 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .admin-avatar {
+      width: 28px; height: 28px; border-radius: 50%; background: var(--accent2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 600; color: white; flex-shrink: 0;
+    }
+    .admin-user-info .aun { font-size: 12px; color: white; font-weight: 500; }
+    .admin-user-info .aur { font-size: 10px; color: rgba(255,255,255,0.4); }
+
+    .admin-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .admin-topbar {
+      background: white; border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 52px; display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0;
+    }
+    .admin-topbar h2 { font-size: 15px; font-weight: 600; }
+    .admin-main { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg); }
+    .admin-panel { display: none; }
+    .admin-panel.active { display: block; }
+
+    /* Stats cards */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card {
+      background: white; border: 1px solid var(--border); border-radius: 10px;
+      padding: 20px;
+    }
+    .stat-card .sc-num { font-size: 28px; font-weight: 700; }
+    .stat-card .sc-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .stat-card .sc-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* Users table */
+    .admin-card { background: white; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .admin-card-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .admin-card-header h3 { font-size: 14px; font-weight: 600; flex: 1; }
+    .search-input {
+      padding: 6px 12px; border: 1px solid var(--border); border-radius: 5px;
+      font-size: 13px; font-family: var(--font); outline: none; width: 220px;
+    }
+    .search-input:focus { border-color: var(--accent2); }
+    .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .admin-table th {
+      padding: 10px 14px; text-align: left; font-size: 11px;
+      font-weight: 600; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.4px; background: #f7fafc; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .admin-table td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    .admin-table tr:hover td { background: #f7fafc; }
+    .admin-table tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+    .badge-green { background: #c6f6d5; color: #22543d; }
+    .badge-red { background: #fed7d7; color: #742a2a; }
+    .badge-blue { background: #bee3f8; color: #2a69ac; }
+    .badge-gray { background: #edf2f7; color: #4a5568; }
+    .action-btn {
+      padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);
+      background: white; font-size: 11px; cursor: pointer; font-family: var(--font);
+      transition: all 0.15s; margin-right: 4px;
+    }
+    .action-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+    .action-btn.danger:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: white; border-radius: 10px; width: 560px;
+      max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .modal-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .modal-header h3 { font-size: 15px; font-weight: 600; flex: 1; }
+    .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--muted); }
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+    .btn-sm { padding: 7px 16px; border-radius: 5px; font-size: 13px; font-family: var(--font); font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: white; transition: all 0.15s; }
+    .btn-sm:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-primary { background: var(--accent2); color: white; border-color: var(--accent2); }
+    .btn-primary:hover { background: #2b6cb0; border-color: #2b6cb0; color: white; }
+    .btn-danger { background: var(--accent); color: white; border-color: var(--accent); }
+    .btn-danger:hover { background: #c53030; color: white; }
+    .btn-success { background: var(--green); color: white; border-color: var(--green); }
+
+    /* Detail rows */
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .detail-item .dl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+    .detail-item .dv { font-size: 14px; font-weight: 500; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 20px; right: 20px; padding: 10px 18px;
+      border-radius: 6px; font-size: 13px; font-weight: 500;
+      opacity: 0; transform: translateY(6px); transition: all 0.2s;
+      z-index: 200; pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.success { background: #c6f6d5; color: #22543d; border: 1px solid #9ae6b4; }
+    #toast.error { background: #fed7d7; color: #742a2a; border: 1px solid #fc8181; }
+  </style>
+</head>
+<body>
+
+<!-- ── SPLASH PAGE ── -->
+<div id="page-splash" class="page active">
+  <nav class="splash-nav">
+    <div class="nav-logo">
+      <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="120" height="120" rx="28" fill="#26215C"/>
+        <circle cx="60" cy="44" r="20" fill="#AFA9EC"/>
+        <path d="M28 92 C28 68 92 68 92 92" stroke="#AFA9EC" stroke-width="7" stroke-linecap="round" fill="none"/>
+        <circle cx="88" cy="82" r="16" fill="#7F77DD"/>
+        <path d="M82 82 L87 87 L96 76" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      <span>Proxie<span style="color:#AFA9EC;">Agent</span></span>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-nav btn-ghost" onclick="showPage('login')">Sign in</button>
+      <button class="btn-nav btn-solid" onclick="showPage('register')">Get started free</button>
+    </div>
+  </nav>
+
+  <div class="splash-hero">
+    <h1>Your AI agent that shops<br/><span>carriers for you</span></h1>
+    <p>Set your requirements once. Your personal agent finds the best CDL opportunities, contacts recruiters, and keeps you updated — all on autopilot.</p>
+    <div class="hero-cta">
+      <button class="btn-hero btn-hero-primary" onclick="showPage('register')">Create free account →</button>
+      <button class="btn-hero btn-hero-secondary" onclick="showPage('login')">Sign in</button>
+    </div>
+  </div>
+
+  <div class="splash-features">
+    <div class="feature-card">
+      <div class="feature-icon">🎯</div>
+      <h3>Set your rules, not resumes</h3>
+      <p>Tell the agent your minimum CPM, home time, and preferred freight. It only contacts carriers that meet your requirements.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📞</div>
+      <h3>AI calls recruiters for you</h3>
+      <p>Your voice agent introduces you professionally, pitches your experience, and schedules callbacks — while you're on the road.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <h3>Full outreach dashboard</h3>
+      <p>Track every carrier contacted, every call made, and every offer received in one place. Never lose track of an opportunity.</p>
+    </div>
+  </div>
+
+  <div class="splash-stats">
+    <div class="stat-item">
+      <div class="stat-num">20+</div>
+      <div class="stat-label">Major carriers in database</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">5 min</div>
+      <div class="stat-label">To set up your agent</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">24/7</div>
+      <div class="stat-label">Agent works while you drive</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">Free</div>
+      <div class="stat-label">To get started</div>
+    </div>
+  </div>
+
+  <div class="splash-footer">
+    <span>© 2025 Proxie Agent by Conversion Interactive</span>
+    <span>CDL Driver Recruitment Platform</span>
+  </div>
+</div>
+
+<!-- ── LOGIN PAGE ── -->
+<div id="page-login" class="page">
+  <div class="auth-left">
+    <div class="logo">
+      <div class="icon">DA</div>
+      <span>Proxie Agent</span>
+    </div>
+    <h2>Welcome back, driver.</h2>
+    <p>Sign in to check your outreach activity, review carrier matches, and manage your agent settings.</p>
+    <div class="auth-points">
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">Your agent runs 24/7 even when you're logged out</div></div>
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">All outreach and call logs saved to your account</div></div>
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">Rules and preferences saved across sessions</div></div>
+    </div>
+  </div>
+  <div class="auth-right">
+    <div class="auth-card">
+      <h3>Sign in</h3>
+      <p class="auth-sub">Don't have an account? <a onclick="showPage('register')">Create one free</a></p>
+      <div class="auth-error" id="login-error"></div>
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" id="login-email" placeholder="you@email.com" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+      </div>
+      <button class="btn-auth btn-auth-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+      <div class="auth-switch">
+        <a onclick="showPage('splash')">← Back to home</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── REGISTER PAGE ── -->
+<div id="page-register" class="page">
+  <div class="auth-left">
+    <div class="logo">
+      <div class="icon">DA</div>
+      <span>Proxie Agent</span>
+    </div>
+    <h2>Start finding better carriers today.</h2>
+    <p>Create your free account and let AI handle your job search while you focus on driving.</p>
+    <div class="auth-points">
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">Set your minimum CPM, home time, and freight type</div></div>
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">Agent automatically contacts matching carriers</div></div>
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">Voice agent calls recruiters on your behalf</div></div>
+      <div class="auth-point"><div class="auth-point-dot"></div><div class="auth-point-text">Free to start — no credit card required</div></div>
+    </div>
+  </div>
+  <div class="auth-right">
+    <div class="auth-card">
+      <h3>Create your account</h3>
+      <p class="auth-sub">Already have an account? <a onclick="showPage('login')">Sign in</a></p>
+      <div class="auth-error" id="register-error"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>First name</label>
+          <input type="text" id="reg-first" placeholder="Patrick" />
+        </div>
+        <div class="form-group">
+          <label>Last name</label>
+          <input type="text" id="reg-last" placeholder="Grace" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" id="reg-email" placeholder="you@email.com" />
+      </div>
+      <div class="form-group">
+        <label>Phone number</label>
+        <input type="tel" id="reg-phone" placeholder="(555) 555-5555" />
+      </div>
+      <div class="form-group">
+        <label>Password <span style="color:#718096;font-weight:400;">(min 8 characters)</span></label>
+        <input type="password" id="reg-password" placeholder="••••••••" />
+      </div>
+      <button class="btn-auth btn-auth-primary" id="register-btn" onclick="doRegister()">Create account →</button>
+      <div class="auth-switch">
+        <a onclick="showPage('splash')">← Back to home</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADMIN PORTAL ── -->
+<div id="page-admin" class="page">
+  <aside class="admin-sidebar">
+    <div class="logo-area">
+      <div class="li">DA</div>
+      <div>
+        <div class="lt">Proxie Agent</div>
+        <div class="ls">Admin Portal</div>
+      </div>
+    </div>
+    <nav class="admin-nav">
+      <div class="admin-nav-section">Dashboard</div>
+      <div class="admin-nav-item active" data-panel="stats" onclick="showAdminPanel('stats')">📊 Overview</div>
+      <div class="admin-nav-section">Management</div>
+      <div class="admin-nav-item" data-panel="users" onclick="showAdminPanel('users')">👤 Drivers</div>
+      <div class="admin-nav-item" data-panel="activity" onclick="showAdminPanel('activity')">📋 Activity Feed</div>
+    </nav>
+    <div class="admin-footer">
+      <div class="admin-user-pill">
+        <div class="admin-avatar" id="admin-avatar">A</div>
+        <div class="admin-user-info">
+          <div class="aun" id="admin-name">Admin</div>
+          <div class="aur">Administrator</div>
+        </div>
+      </div>
+      <button onclick="doLogout()" style="width:100%;margin-top:8px;padding:7px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:rgba(255,255,255,0.5);font-size:12px;cursor:pointer;font-family:var(--font);">Sign out</button>
+    </div>
+  </aside>
+
+  <div class="admin-content">
+    <div class="admin-topbar">
+      <h2 id="admin-panel-title">Overview</h2>
+      <div style="font-size:12px;color:var(--muted);" id="admin-last-refresh"></div>
+    </div>
+    <div class="admin-main">
+
+      <!-- Stats Panel -->
+      <div class="admin-panel active" id="panel-stats">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="sc-num" id="s-total-drivers">—</div>
+            <div class="sc-label">Total drivers</div>
+            <div class="sc-sub" id="s-active-drivers">— active</div>
+          </div>
+          <div class="stat-card">
+            <div class="sc-num" id="s-profiles-complete">—</div>
+            <div class="sc-label">Profiles complete</div>
+          </div>
+          <div class="stat-card">
+            <div class="sc-num" id="s-total-outreach">—</div>
+            <div class="sc-label">Total outreach records</div>
+            <div class="sc-sub" id="s-positive">— positive outcomes</div>
+          </div>
+          <div class="stat-card">
+            <div class="sc-num" id="s-total-calls">—</div>
+            <div class="sc-label">Voice calls made</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="admin-card">
+            <div class="admin-card-header"><h3>Recent sign-ups</h3></div>
+            <table class="admin-table">
+              <thead><tr><th>Name</th><th>Email</th><th>Joined</th></tr></thead>
+              <tbody id="recent-signups-tbody"></tbody>
+            </table>
+          </div>
+          <div class="admin-card">
+            <div class="admin-card-header"><h3>Most active drivers</h3></div>
+            <table class="admin-table">
+              <thead><tr><th>Name</th><th>Email</th><th>Outreach</th></tr></thead>
+              <tbody id="top-drivers-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Panel -->
+      <div class="admin-panel" id="panel-users">
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <h3>All Drivers</h3>
+            <input class="search-input" type="text" id="user-search" placeholder="Search name or email..." oninput="searchUsers()" />
+            <span id="user-count" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Phone</th>
+                  <th>Status</th><th>Profile</th><th>Outreach</th>
+                  <th>Joined</th><th>Last Login</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="users-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Panel -->
+      <div class="admin-panel" id="panel-activity">
+        <div class="admin-card">
+          <div class="admin-card-header"><h3>Recent Outreach Activity</h3></div>
+          <div style="overflow-x:auto;">
+            <table class="admin-table">
+              <thead><tr><th>Driver</th><th>Carrier</th><th>Status</th><th>Match</th><th>Updated</th></tr></thead>
+              <tbody id="activity-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- User Detail Modal -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Driver Details</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '';
+let authToken = localStorage.getItem('da_token');
+let currentUser = null;
+let allUsers = [];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  if (authToken) {
+    try {
+      const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
+      if (r.ok) {
+        currentUser = await r.json();
+        if (currentUser.role === 'admin') {
+          showPage('admin');
+          await loadAdminStats();
+        } else {
+          // Driver — redirect to main app
+          window.location.href = '/app';
+        }
+        return;
+      }
+    } catch(e) {}
+    localStorage.removeItem('da_token');
+    authToken = null;
+  }
+  showPage('splash');
+}
+
+function authHeaders() {
+  return { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' };
+}
+
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-error');
+  err.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'Signing in...';
+
+  try {
+    const r = await fetch(`${API}/api/auth/login`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password })
+    });
+    const d = await r.json();
+    if (r.ok && d.success) {
+      authToken = d.token;
+      localStorage.setItem('da_token', authToken);
+      currentUser = d.user;
+      window.location.href = '/app';
+    } else {
+      err.textContent = d.detail || 'Login failed';
+      err.classList.add('show');
+    }
+  } catch(e) {
+    err.textContent = 'Could not connect to server.';
+    err.classList.add('show');
+  }
+  btn.disabled = false; btn.textContent = 'Sign in';
+}
+
+async function doRegister() {
+  const btn = document.getElementById('register-btn');
+  const err = document.getElementById('register-error');
+  err.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'Creating account...';
+
+  const payload = {
+    first_name: document.getElementById('reg-first').value.trim(),
+    last_name: document.getElementById('reg-last').value.trim(),
+    email: document.getElementById('reg-email').value.trim(),
+    phone: document.getElementById('reg-phone').value.trim(),
+    password: document.getElementById('reg-password').value,
+  };
+
+  try {
+    const r = await fetch(`${API}/api/auth/register`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (r.ok && d.success) {
+      authToken = d.token;
+      localStorage.setItem('da_token', authToken);
+      window.location.href = '/app';
+    } else {
+      err.textContent = d.detail || 'Registration failed';
+      err.classList.add('show');
+    }
+  } catch(e) {
+    err.textContent = 'Could not connect to server.';
+    err.classList.add('show');
+  }
+  btn.disabled = false; btn.textContent = 'Create account →';
+}
+
+function doLogout() {
+  localStorage.removeItem('da_token');
+  authToken = null; currentUser = null;
+  showPage('splash');
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+function showAdminPanel(panel) {
+  document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.admin-nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`panel-${panel}`).classList.add('active');
+  document.querySelector(`[data-panel="${panel}"]`).classList.add('active');
+  const titles = { stats: 'Overview', users: 'Drivers', activity: 'Activity Feed' };
+  document.getElementById('admin-panel-title').textContent = titles[panel] || panel;
+  if (panel === 'users') loadUsers();
+  if (panel === 'activity') loadActivity();
+}
+
+async function loadAdminStats() {
+  try {
+    const r = await fetch(`${API}/api/admin/stats`, { headers: authHeaders() });
+    const d = await r.json();
+    document.getElementById('s-total-drivers').textContent = d.total_drivers;
+    document.getElementById('s-active-drivers').textContent = `${d.active_drivers} active`;
+    document.getElementById('s-profiles-complete').textContent = d.profiles_complete;
+    document.getElementById('s-total-outreach').textContent = d.total_outreach;
+    document.getElementById('s-positive').textContent = `${d.positive_outcomes} positive`;
+    document.getElementById('s-total-calls').textContent = d.total_calls;
+
+    const rs = document.getElementById('recent-signups-tbody');
+    rs.innerHTML = (d.recent_signups || []).map(u => `
+      <tr><td>${esc(u.first_name)} ${esc(u.last_name)}</td>
+          <td style="color:#718096;">${esc(u.email)}</td>
+          <td style="color:#718096;">${fmtDate(u.created_at)}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:#a0aec0;padding:20px;">No sign-ups yet</td></tr>';
+
+    const td = document.getElementById('top-drivers-tbody');
+    td.innerHTML = (d.top_active_drivers || []).map(u => `
+      <tr><td>${esc(u.first_name)} ${esc(u.last_name)}</td>
+          <td style="color:#718096;">${esc(u.email)}</td>
+          <td><span class="badge badge-blue">${u.outreach_count}</span></td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:#a0aec0;padding:20px;">No activity yet</td></tr>';
+
+    document.getElementById('admin-last-refresh').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+  } catch(e) { console.error('Stats load failed', e); }
+}
+
+async function loadUsers(search = '') {
+  try {
+    const r = await fetch(`${API}/api/admin/users?search=${encodeURIComponent(search)}&limit=100`, { headers: authHeaders() });
+    const d = await r.json();
+    allUsers = d.users || [];
+    document.getElementById('user-count').textContent = `${d.total} drivers`;
+    renderUsers(allUsers);
+  } catch(e) {}
+}
+
+function searchUsers() {
+  const q = document.getElementById('user-search').value.toLowerCase();
+  const filtered = q ? allUsers.filter(u =>
+    (u.email||'').toLowerCase().includes(q) ||
+    (u.first_name||'').toLowerCase().includes(q) ||
+    (u.last_name||'').toLowerCase().includes(q)
+  ) : allUsers;
+  renderUsers(filtered);
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:#a0aec0;">No drivers found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td style="font-weight:500;">${esc(u.first_name)} ${esc(u.last_name)}</td>
+      <td style="color:#718096;">${esc(u.email)}</td>
+      <td style="color:#718096;">${esc(u.phone||'—')}</td>
+      <td><span class="badge ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td><span class="badge ${u.setup_complete ? 'badge-blue' : 'badge-gray'}">${u.setup_complete ? 'Complete' : 'Pending'}</span></td>
+      <td>${u.outreach_count || 0}</td>
+      <td style="color:#718096;">${fmtDate(u.created_at)}</td>
+      <td style="color:#718096;">${u.last_login ? fmtDate(u.last_login) : 'Never'}</td>
+      <td>
+        <button class="action-btn" onclick="viewUser(${u.id})">View</button>
+        ${u.is_active
+          ? `<button class="action-btn danger" onclick="deactivateUser(${u.id})">Deactivate</button>`
+          : `<button class="action-btn" onclick="activateUser(${u.id})">Activate</button>`}
+      </td>
+    </tr>`).join('');
+}
+
+async function viewUser(userId) {
+  try {
+    const r = await fetch(`${API}/api/admin/users/${userId}`, { headers: authHeaders() });
+    const d = await r.json();
+    const u = d.user;
+    document.getElementById('modal-title').textContent = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email;
+    document.getElementById('modal-body').innerHTML = `
+      <div class="detail-grid" style="margin-bottom:20px;">
+        <div class="detail-item"><div class="dl">Email</div><div class="dv">${esc(u.email)}</div></div>
+        <div class="detail-item"><div class="dl">Phone</div><div class="dv">${esc(u.phone||'—')}</div></div>
+        <div class="detail-item"><div class="dl">Status</div><div class="dv"><span class="badge ${u.is_active?'badge-green':'badge-red'}">${u.is_active?'Active':'Inactive'}</span></div></div>
+        <div class="detail-item"><div class="dl">Joined</div><div class="dv">${fmtDate(u.created_at)}</div></div>
+        <div class="detail-item"><div class="dl">CDL Experience</div><div class="dv">${esc(u.cdl_experience||'Not set')}</div></div>
+        <div class="detail-item"><div class="dl">Driver Type</div><div class="dv">${esc(u.driver_type||'Not set')}</div></div>
+        <div class="detail-item"><div class="dl">Profile Complete</div><div class="dv">${u.setup_complete?'Yes':'No'}</div></div>
+        <div class="detail-item"><div class="dl">Agent Rules Active</div><div class="dv">${u.rules_active?'Yes':'No'}</div></div>
+      </div>
+      <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Recent outreach (${d.outreach.length})</div>
+      ${d.outreach.length ? `<table class="admin-table" style="margin-bottom:16px;">
+        <thead><tr><th>Carrier</th><th>Status</th><th>Score</th><th>Updated</th></tr></thead>
+        <tbody>${d.outreach.map(o => `<tr>
+          <td>${esc(o.carrier_name)}</td>
+          <td><span class="badge badge-gray">${o.status}</span></td>
+          <td>${o.match_score}</td>
+          <td>${fmtDate(o.last_updated)}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : '<p style="color:#a0aec0;font-size:13px;margin-bottom:16px;">No outreach activity yet.</p>'}
+      ${u.notes ? `<div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-size:13px;"><strong>Notes:</strong> ${esc(u.notes)}</div>` : ''}
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+      <button class="btn-sm" onclick="closeModal()">Close</button>
+      <button class="btn-sm btn-danger" onclick="resetProfile(${userId})">Reset Profile</button>
+      <button class="btn-sm ${u.is_active?'btn-danger':'btn-success'}" onclick="${u.is_active?`deactivateUser(${userId})`:`activateUser(${userId})`}">
+        ${u.is_active ? 'Deactivate' : 'Activate'}
+      </button>
+    `;
+    document.getElementById('user-modal').classList.add('show');
+  } catch(e) { showToast('Could not load user', 'error'); }
+}
+
+function closeModal() { document.getElementById('user-modal').classList.remove('show'); }
+
+async function activateUser(id) {
+  await fetch(`${API}/api/admin/users/${id}/activate`, { method: 'POST', headers: authHeaders() });
+  showToast('Account activated', 'success'); closeModal(); loadUsers();
+}
+async function deactivateUser(id) {
+  if (!confirm('Deactivate this account?')) return;
+  await fetch(`${API}/api/admin/users/${id}/deactivate`, { method: 'POST', headers: authHeaders() });
+  showToast('Account deactivated', ''); closeModal(); loadUsers();
+}
+async function resetProfile(id) {
+  if (!confirm('Reset this driver\'s profile and outreach log? This cannot be undone.')) return;
+  await fetch(`${API}/api/admin/users/${id}/reset-profile`, { method: 'POST', headers: authHeaders() });
+  showToast('Profile reset', 'success'); closeModal();
+}
+
+async function loadActivity() {
+  try {
+    const r = await fetch(`${API}/api/admin/activity?limit=50`, { headers: authHeaders() });
+    const d = await r.json();
+    const tbody = document.getElementById('activity-tbody');
+    const statusColors = { pending:'#718096',approved:'#3182ce',contacted:'#805ad5',interested:'#38a169',rejected:'#e53e3e',hired:'#00897b' };
+    tbody.innerHTML = (d.outreach||[]).map(o => {
+      const c = statusColors[o.status] || '#718096';
+      return `<tr>
+        <td style="font-weight:500;">${esc(o.first_name)} ${esc(o.last_name)}</td>
+        <td>${esc(o.carrier_name)}</td>
+        <td><span style="background:${c}22;color:${c};border:1px solid ${c}44;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${o.status}</span></td>
+        <td>${o.match_score}/100</td>
+        <td style="color:#718096;">${fmtDate(o.last_updated)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;padding:30px;color:#a0aec0;">No activity yet</td></tr>';
+  } catch(e) {}
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `show ${type}`;
+  setTimeout(() => t.className = '', 2500);
+}
+
+init();
+</script>
+</body>
+</html>

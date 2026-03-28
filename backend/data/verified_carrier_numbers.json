@@ -1,0 +1,128 @@
+{
+  "carriers": {
+    "Werner Enterprises": {
+      "phone": "+18003464639",
+      "confidence": "high",
+      "note": "1-800-34-WERNER is their well-known recruiting line, widely advertised",
+      "usable": true
+    },
+    "Schneider National": {
+      "phone": null,
+      "confidence": "high",
+      "note": "1-800-44-PRIDE (1-800-447-7433) is their long-standing recruiting number",
+      "usable": false
+    },
+    "Swift Transportation": {
+      "phone": "+18009668379",
+      "confidence": "medium",
+      "note": "This was their recruiting line, though Swift merged with Knight in 2017",
+      "usable": true
+    },
+    "J.B. Hunt Transport": {
+      "phone": "+18006434336",
+      "confidence": "high",
+      "note": "1-800-643-4336 is their established driver recruiting line",
+      "usable": true
+    },
+    "Prime Inc.": {
+      "phone": "+18007438481",
+      "confidence": "high",
+      "note": "1-800-PRIME-81 is their well-advertised recruiting number",
+      "usable": true
+    },
+    "Heartland Express": {
+      "phone": "+18004414953",
+      "confidence": "medium",
+      "note": "This number appeared in recruiting materials but I'm less certain of current status",
+      "usable": true
+    },
+    "Covenant Logistics": {
+      "phone": null,
+      "confidence": "low",
+      "note": "I have seen numbers but am not confident enough to provide one",
+      "usable": false
+    },
+    "Melton Truck Lines": {
+      "phone": "+18006358836",
+      "confidence": "medium",
+      "note": "1-800-635-8836 appeared in their recruiting, moderate confidence",
+      "usable": true
+    },
+    "Maverick Transportation": {
+      "phone": "+18002896100",
+      "confidence": "medium",
+      "note": "This number appeared in recruiting contexts but verify before use",
+      "usable": true
+    },
+    "Old Dominion Freight": {
+      "phone": null,
+      "confidence": "low",
+      "note": "ODFL is primarily LTL with regional terminals; no single recruiting line I'm confident about",
+      "usable": false
+    },
+    "USA Truck": {
+      "phone": null,
+      "confidence": "unknown",
+      "note": "USA Truck was acquired; I'm uncertain about current recruiting contact",
+      "usable": false
+    },
+    "Knight Transportation": {
+      "phone": null,
+      "confidence": "low",
+      "note": "Knight-Swift merger complicates this; not confident in a specific number",
+      "usable": false
+    },
+    "Daseke Inc.": {
+      "phone": null,
+      "confidence": "unknown",
+      "note": "Daseke operates many subsidiaries with separate recruiting; no central number I'm confident about",
+      "usable": false
+    },
+    "CR England": {
+      "phone": "+18008794766",
+      "confidence": "high",
+      "note": "1-800-879-4766 is their well-established recruiting line",
+      "usable": true
+    },
+    "Western Express": {
+      "phone": "+18888886038",
+      "confidence": "medium",
+      "note": "This number appeared in recruiting materials; moderate confidence",
+      "usable": true
+    },
+    "Ruan Transportation": {
+      "phone": null,
+      "confidence": "low",
+      "note": "Ruan is primarily dedicated contract; I'm not confident about a recruiting line",
+      "usable": false
+    },
+    "AAA Cooper Transportation": {
+      "phone": null,
+      "confidence": "low",
+      "note": "Regional LTL carrier; not confident about a specific recruiting number",
+      "usable": false
+    },
+    "Saia Inc.": {
+      "phone": null,
+      "confidence": "low",
+      "note": "LTL carrier with regional hiring; no central number I'm confident about",
+      "usable": false
+    },
+    "Estes Express Lines": {
+      "phone": null,
+      "confidence": "low",
+      "note": "Large LTL carrier but recruiting is often regional; not confident in a central number",
+      "usable": false
+    },
+    "Hirschbach Motor Lines": {
+      "phone": "+18004365838",
+      "confidence": "medium",
+      "note": "This number appeared in recruiting contexts; moderate confidence",
+      "usable": true
+    }
+  },
+  "fetched_at": "2026-03-28T18:43:38.746401+00:00",
+  "model": "claude-opus-4-5",
+  "total": 20,
+  "usable": 10
+}
