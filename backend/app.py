@@ -1,26 +1,22 @@
 import os
-os.environ["ANTHROPIC_API_KEY"] = "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"
+from dotenv import load_dotenv
+load_dotenv()
 
-# ── MySQL Database ────────────────────────────────────────────────────────────
-DB_HOST     = "localhost"
-DB_PORT     = 3306
-DB_USER     = "root"
-DB_PASSWORD = "77149402228708651397690140367961ABC!"   # set after installing MySQL
-DB_NAME     = "driver_agent"
+# ── Credentials (read from environment / .env file) ───────────────────────────
+os.environ["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY", "")
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
-JWT_SECRET  = "change-this-to-a-long-random-secret-32-chars-minimum"
+DB_HOST     = os.getenv("DB_HOST", "localhost")
+DB_PORT     = int(os.getenv("DB_PORT", 3306))
+DB_USER     = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME     = os.getenv("DB_NAME", "driver_agent")
 
-# ── Bland AI ──────────────────────────────────────────────────────────────────
-BLAND_API_KEY      = "org_8275ac50f48aabc9044e7b451240b590a9daf600305d37dc4bdcd3d5d8812a20a9f325c377f58e91e64069"
-BLAND_PHONE_NUMBER = ""
-
-# ── FMCSA ─────────────────────────────────────────────────────────────────────
-FMCSA_WEBKEY = "cf9d935a628350313ec94e780692c3a0f27e599e"   # Get from mobile.fmcsa.dot.gov/QCDevsite
-
-# ── Job Sources ───────────────────────────────────────────────────────────────
-APPCAST_FEED_URL = ""
-JOOBLE_API_KEY   = ""
+JWT_SECRET         = os.getenv("JWT_SECRET", "changeme")
+BLAND_API_KEY      = os.getenv("BLAND_API_KEY", "")
+BLAND_PHONE_NUMBER = os.getenv("BLAND_PHONE_NUMBER", "")
+FMCSA_WEBKEY       = os.getenv("FMCSA_WEBKEY", "")
+APPCAST_FEED_URL   = os.getenv("APPCAST_FEED_URL", "")
+JOOBLE_API_KEY     = os.getenv("JOOBLE_API_KEY", "")
 
 # ─────────────────────────────────────────────────────────────────────────────
 import uvicorn

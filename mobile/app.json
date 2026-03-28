@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Proxie Agent",
+    "slug": "proxie-agent",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "proxieagent",
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "bundleIdentifier": "ai.proxieagent.app"
+    },
+    "android": {
+      "package": "ai.proxieagent.app"
+    }
+  }
+}
