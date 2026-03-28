@@ -27,11 +27,7 @@ from pathlib import Path
 import asyncio
 
 import db.database as _db
-_db.DB_HOST     = DB_HOST
-_db.DB_PORT     = DB_PORT
-_db.DB_USER     = DB_USER
-_db.DB_PASSWORD = DB_PASSWORD
-_db.DB_NAME     = DB_NAME
+
 
 import db.auth as _auth
 _auth.JWT_SECRET = JWT_SECRET
