@@ -205,6 +205,14 @@ function ProfileView({ profile, user, onEdit, onWizard, onReset, onSignOut }) {
         </Card>
       )}
 
+{/* Account Settings */}
+      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid #f0f0f0', fontSize: 12, fontWeight: 700, color: '#4a5568', background: '#fafbfc' }}>⚙️ Account Settings</div>
+        <div style={{ padding: 14 }}>
+          <AccountSettingsModal user={user} />
+        </div>
+      </div>
+
       {/* Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
         <button onClick={onWizard} style={{ width: '100%', padding: '12px', background: 'white', color: '#534AB7', border: '1px solid #AFA9EC', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
