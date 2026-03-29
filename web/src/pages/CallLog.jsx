@@ -35,7 +35,12 @@ function fmtDate(str) {
 function AnalysisModal({ call, onClose }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('summary') // summary | transcript | recording
+  const [tab, setTab] = useState(call._tab || 'summary')
+
+  // Sync tab when a different button opens the same modal
+  useEffect(() => {
+    setTab(call._tab || 'summary')
+  }, [call._tab, call.call_id])
 
   useEffect(() => {
     const load = async () => {
