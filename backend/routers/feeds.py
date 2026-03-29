@@ -378,7 +378,6 @@ def score_job(job: dict, rules: AgentRules) -> int:
 # ── GET feeds — all authenticated users see ALL feeds (global) ────────────────
 @router.get("/feeds")
 def list_feeds(user: dict = Depends(get_current_user)):
-    """Return all feeds globally — not filtered by user."""
     with db() as cur:
         cur.execute("SELECT * FROM carrier_feeds ORDER BY created_at DESC")
         rows = cur.fetchall()
