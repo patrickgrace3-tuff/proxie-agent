@@ -14,6 +14,32 @@ function ScoreBar({ score }) {
   )
 }
 
+// Strip HTML tags and decode entities for clean display
+function stripHtml(html) {
+  if (!html) return ''
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&rsquo;/g, "'")
+    .replace(/&lsquo;/g, "'")
+    .replace(/&ldquo;/g, '"')
+    .replace(/&rdquo;/g, '"')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&#\d+;/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+// ── Feed Manager (admin only) ─────────────────────────────────────────────────
 function FeedManager({ onClose, onRefresh }) {
   const [feeds, setFeeds] = useState([])
   const [name, setName] = useState('')
@@ -140,8 +166,7 @@ function FeedManager({ onClose, onRefresh }) {
             }}>{adding ? 'Adding...' : '➕ Add & Sync Feed'}</button>
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#2d3748' }}>
-            Active Feeds
-            <span style={{ fontSize: 11, fontWeight: 400, color: '#718096', marginLeft: 6 }}>— visible to all users</span>
+            Active Feeds <span style={{ fontSize: 11, fontWeight: 400, color: '#718096' }}>— visible to all users</span>
           </div>
           {feeds.length === 0
             ? <div style={{ textAlign: 'center', padding: 24, color: '#a0aec0', fontSize: 12 }}>No feeds added yet.</div>
@@ -157,20 +182,14 @@ function FeedManager({ onClose, onRefresh }) {
                         <span style={{ padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: statusColor + '22', color: statusColor }}>{f.status}</span>
                         <span style={{ padding: '1px 7px', borderRadius: 10, fontSize: 10, background: '#f0f4f8', color: '#4a5568', textTransform: 'uppercase' }}>{f.feed_type}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#718096', marginTop: 3 }}>
-                        {f.job_count || 0} jobs · Last synced: {synced}
-                      </div>
+                      <div style={{ fontSize: 11, color: '#718096', marginTop: 3 }}>{f.job_count || 0} jobs · Last synced: {synced}</div>
                       {f.error_msg && <div style={{ fontSize: 11, color: '#c53030', marginTop: 3 }}>⚠ {f.error_msg.substring(0, 100)}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button onClick={() => syncFeed(f.id)} disabled={syncing === f.id} style={{
-                        padding: '5px 10px', background: '#ebf8ff', color: '#3182ce',
-                        border: '1px solid #bee3f8', borderRadius: 6, fontSize: 11, cursor: 'pointer'
-                      }}>{syncing === f.id ? '...' : '↺ Sync'}</button>
-                      <button onClick={() => deleteFeed(f.id, f.name)} style={{
-                        padding: '5px 10px', background: 'white', color: '#e53e3e',
-                        border: '1px solid #fed7d7', borderRadius: 6, fontSize: 11, cursor: 'pointer'
-                      }}>🗑</button>
+                      <button onClick={() => syncFeed(f.id)} disabled={syncing === f.id} style={{ padding: '5px 10px', background: '#ebf8ff', color: '#3182ce', border: '1px solid #bee3f8', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>
+                        {syncing === f.id ? '...' : '↺ Sync'}
+                      </button>
+                      <button onClick={() => deleteFeed(f.id, f.name)} style={{ padding: '5px 10px', background: 'white', color: '#e53e3e', border: '1px solid #fed7d7', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🗑</button>
                     </div>
                   </div>
                 </div>
@@ -185,6 +204,7 @@ function FeedManager({ onClose, onRefresh }) {
   )
 }
 
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function Carriers() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
@@ -202,6 +222,7 @@ export default function Carriers() {
   const [showFeedManager, setShowFeedManager] = useState(false)
   const [syncing, setSyncing] = useState(null)
   const [selected, setSelected] = useState(new Set())
+  const [expanded, setExpanded] = useState(null)
   const [toast, setToast] = useState('')
   const searchTimer = useRef(null)
 
@@ -226,20 +247,13 @@ export default function Carriers() {
       setTotalPages(r.data.total_pages || 1)
       setPage(p)
       setSelected(new Set())
+      setExpanded(null)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
 
-  // Load on mount
-  useEffect(() => {
-    loadFeeds()
-    loadJobs(1, '0', '', false, '')
-  }, [])
-
-  // Reload when filters change
-  useEffect(() => {
-    loadJobs(1, minScore, feedFilter, rulesOn, search)
-  }, [minScore, feedFilter, rulesOn])
+  useEffect(() => { loadFeeds(); loadJobs(1, '0', '', false, '') }, [])
+  useEffect(() => { loadJobs(1, minScore, feedFilter, rulesOn, search) }, [minScore, feedFilter, rulesOn])
 
   const handleSearch = (v) => {
     setSearch(v)
@@ -253,6 +267,7 @@ export default function Carriers() {
       showToast('Added to Carrier Outreach!')
       setJobs(prev => prev.filter(j => j.id !== jobId))
       setSelected(prev => { const n = new Set(prev); n.delete(jobId); return n })
+      if (expanded === jobId) setExpanded(null)
     } catch (e) { showToast('Failed to add') }
   }
 
@@ -294,7 +309,15 @@ export default function Carriers() {
     })
   }
 
-  const scoreColor = (s) => s >= 80 ? '#38a169' : s >= 60 ? '#dd6b20' : '#e53e3e'
+  const handleExpand = (id) => {
+    const next = expanded === id ? null : id
+    setExpanded(next)
+    if (next) {
+      setTimeout(() => {
+        document.getElementById(`carrier-card-${next}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Inter, system-ui, sans-serif', background: '#f7fafc' }}>
@@ -310,10 +333,7 @@ export default function Carriers() {
             </div>
           </div>
           {isAdmin && (
-            <button onClick={() => setShowFeedManager(true)} style={{
-              padding: '8px 14px', background: '#534AB7', color: 'white', border: 'none',
-              borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer'
-            }}>+ Feed</button>
+            <button onClick={() => setShowFeedManager(true)} style={{ padding: '8px 14px', background: '#534AB7', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Feed</button>
           )}
         </div>
 
@@ -369,14 +389,8 @@ export default function Carriers() {
       {selected.size > 0 && (
         <div style={{ background: '#ebf8ff', borderBottom: '1px solid #bee3f8', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <span style={{ fontSize: 13, color: '#2c5282', fontWeight: 500 }}>{selected.size} selected</span>
-          <button onClick={queueSelected} style={{
-            marginLeft: 'auto', padding: '6px 16px', background: '#3182ce', color: 'white',
-            border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer'
-          }}>→ Add to Outreach</button>
-          <button onClick={() => setSelected(new Set())} style={{
-            padding: '6px 10px', background: 'white', color: '#718096',
-            border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer'
-          }}>Clear</button>
+          <button onClick={queueSelected} style={{ marginLeft: 'auto', padding: '6px 16px', background: '#3182ce', color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>→ Add to Outreach</button>
+          <button onClick={() => setSelected(new Set())} style={{ padding: '6px 10px', background: 'white', color: '#718096', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>Clear</button>
         </div>
       )}
 
@@ -398,17 +412,14 @@ export default function Carriers() {
             {isAdmin ? 'Add a feed to start loading carrier jobs.' : "Your admin hasn't added any feeds yet. Check back soon."}
           </div>
           {isAdmin && (
-            <button onClick={() => setShowFeedManager(true)} style={{
-              padding: '10px 24px', background: '#534AB7', color: 'white', border: 'none',
-              borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer'
-            }}>⚙ Add Your First Feed</button>
+            <button onClick={() => setShowFeedManager(true)} style={{ padding: '10px 24px', background: '#534AB7', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>⚙ Add Your First Feed</button>
           )}
         </div>
       )}
 
       {/* Job cards */}
       {(loading || feeds.length > 0) && (
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {loading ? (
             [1, 2, 3, 4].map(i => <div key={i} style={{ background: 'white', borderRadius: 10, height: 80, border: '1px solid #e2e8f0' }} />)
           ) : jobs.length === 0 ? (
@@ -417,20 +428,38 @@ export default function Carriers() {
             </div>
           ) : jobs.map(job => {
             const isSel = selected.has(job.id)
+            const isExp = expanded === job.id
+
+            // Parse description sections
+            const rawDesc = job.description || ''
+            const descParts = rawDesc.split(' | ')
+            const mainDesc = stripHtml(descParts[0] || '')
+            const benefits = stripHtml(job.job_benefits || descParts[1] || '')
+            const requirements = stripHtml(job.job_requirements || descParts[2] || '')
+
+            // Application link — prefer application_link, fallback to job_url
+            const appLink = job.application_link || job.job_url || ''
+
             return (
-              <div key={job.id} onClick={() => toggleSelect(job.id)} style={{
-                background: isSel ? '#ebf8ff' : 'white', borderRadius: 10,
-                border: `1px solid ${isSel ? '#3182ce' : '#e2e8f0'}`,
-                padding: '11px 13px', cursor: 'pointer', transition: 'all 0.1s'
+              <div key={job.id} id={`carrier-card-${job.id}`} style={{
+                background: isSel ? '#ebf8ff' : 'white',
+                borderRadius: 10,
+                border: `1px solid ${isSel ? '#3182ce' : isExp ? '#AFA9EC' : '#e2e8f0'}`,
+                transition: 'border-color 0.15s'
               }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                  <div style={{
-                    width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 2,
+                {/* Summary row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px' }}>
+
+                  {/* Checkbox — select only */}
+                  <div onClick={() => toggleSelect(job.id)} style={{
+                    width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 2, cursor: 'pointer',
                     border: `2px solid ${isSel ? '#3182ce' : '#cbd5e0'}`,
                     background: isSel ? '#3182ce' : 'white',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'white'
                   }}>{isSel ? '✓' : ''}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+
+                  {/* Info area — tap to expand */}
+                  <div onClick={() => handleExpand(job.id)} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
                     <div style={{ fontWeight: 600, fontSize: 13, color: '#1a202c', marginBottom: 2 }}>{job.carrier_name || '—'}</div>
                     <div style={{ fontSize: 12, color: '#718096', marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.job_title || '—'}</div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -441,19 +470,99 @@ export default function Carriers() {
                       {job.weekly_pay && <span style={{ fontSize: 12, fontWeight: 700, color: '#2d3748' }}>${Number(job.weekly_pay).toLocaleString()}/wk</span>}
                       {job.cpm && !job.weekly_pay && <span style={{ fontSize: 12, color: '#718096' }}>{job.cpm}¢/mi</span>}
                       <ScoreBar score={job.match_score || 0} />
-                      {job.feed_name && <span style={{ fontSize: 10, color: '#a0aec0' }}>{job.feed_name}</span>}
+                      <span style={{ fontSize: 10, color: isExp ? '#534AB7' : '#cbd5e0', marginLeft: 'auto' }}>
+                        {isExp ? '▲ less' : '▼ details'}
+                      </span>
                     </div>
                   </div>
+
+                  {/* Quick add button */}
                   <button onClick={e => { e.stopPropagation(); queueJob(job.id) }} style={{
                     padding: '7px 12px', background: '#534AB7', color: 'white', border: 'none',
                     borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0
                   }}>Add</button>
                 </div>
-                {job.job_url && (
-                  <a href={job.job_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                    style={{ fontSize: 11, color: '#3182ce', textDecoration: 'none', display: 'block', marginTop: 6, paddingTop: 6, borderTop: '1px solid #f0f0f0' }}>
-                    View job posting ↗
-                  </a>
+
+                {/* Expanded detail panel */}
+                {isExp && (
+                  <div style={{ borderTop: '1px solid #f0f0f0', padding: '14px 14px 16px', background: '#fafbfc', borderRadius: '0 0 10px 10px' }}>
+
+                    {/* Pay / Home Time tiles */}
+                    {(job.weekly_pay || job.cpm || job.home_time) && (
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                        {job.weekly_pay && (
+                          <div style={{ background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#276749', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Weekly Pay</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#276749' }}>${Number(job.weekly_pay).toLocaleString()}<span style={{ fontSize: 11, fontWeight: 400 }}>/wk</span></div>
+                          </div>
+                        )}
+                        {job.cpm && (
+                          <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#2b6cb0', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>CPM Rate</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#2b6cb0' }}>{job.cpm}<span style={{ fontSize: 11, fontWeight: 400 }}>¢/mile</span></div>
+                          </div>
+                        )}
+                        {job.home_time && (
+                          <div style={{ background: '#faf5ff', border: '1px solid #d6bcfa', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#553c9a', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Home Time</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#553c9a' }}>{job.home_time}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Job Description */}
+                    {mainDesc && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>📋 Job Details</div>
+                        <div style={{ fontSize: 12, color: '#2d3748', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                          {mainDesc.length > 600 ? mainDesc.slice(0, 600) + '...' : mainDesc}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Benefits */}
+                    {benefits && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>🏆 Benefits</div>
+                        <div style={{ fontSize: 12, color: '#2d3748', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                          {benefits.length > 500 ? benefits.slice(0, 500) + '...' : benefits}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Requirements */}
+                    {requirements && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>✅ Requirements</div>
+                        <div style={{ fontSize: 12, color: '#2d3748', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                          {requirements.length > 500 ? requirements.slice(0, 500) + '...' : requirements}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Source */}
+                    {job.feed_name && (
+                      <div style={{ fontSize: 11, color: '#a0aec0', marginBottom: 12 }}>📡 Source: {job.feed_name}</div>
+                    )}
+
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => queueJob(job.id)} style={{
+                        flex: 1, padding: '11px', background: '#534AB7', color: 'white', border: 'none',
+                        borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(83,74,183,0.3)'
+                      }}>+ Add to Outreach</button>
+                      {appLink && (
+                        <a href={appLink} target="_blank" rel="noreferrer" style={{
+                          flex: 1, padding: '11px', background: 'white', color: '#534AB7',
+                          border: '1px solid #AFA9EC', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                          textDecoration: 'none', textAlign: 'center', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', gap: 4
+                        }}>Full App ↗</a>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             )
