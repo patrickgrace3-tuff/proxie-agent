@@ -54,20 +54,36 @@ AGENT_RULES_DB_FIELDS = {
 JSON_FIELDS = {"pay_types_accepted","preferred_regions","states_blacklist","blacklisted_carriers","preferred_carriers"}
 
 def save_rules_for_user(user_id: int, rules: AgentRules):
-    """Save rules to MySQL for a specific user, only writing known columns."""
+    """Save rules to PostgreSQL — insert if not exists, update if exists."""
     d = rules.model_dump()
     row = {}
     for k, v in d.items():
         if k not in AGENT_RULES_DB_FIELDS:
-            continue  # skip fields not in the table (e.g. max_radius_from_home)
+            continue
         if k in JSON_FIELDS:
             row[k] = json.dumps(v if v is not None else [])
         else:
             row[k] = v
-    set_clause = ", ".join(f"{k} = %s" for k in row)
+
     with db() as cur:
-        cur.execute(f"UPDATE agent_rules SET {set_clause} WHERE user_id = %s",
-                    list(row.values()) + [user_id])
+        # Check if row exists
+        cur.execute("SELECT id FROM agent_rules WHERE user_id = %s", (user_id,))
+        exists = cur.fetchone()
+
+        if exists:
+            set_clause = ", ".join(f"{k} = %s" for k in row)
+            cur.execute(
+                f"UPDATE agent_rules SET {set_clause} WHERE user_id = %s",
+                list(row.values()) + [user_id]
+            )
+        else:
+            row["user_id"] = user_id
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join(["%s"] * len(row))
+            cur.execute(
+                f"INSERT INTO agent_rules ({cols}) VALUES ({placeholders})",
+                list(row.values())
+            )
 
 
 @router.get("/")
