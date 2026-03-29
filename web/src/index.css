@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --color-proxie-purple: #534AB7;
+  --color-proxie-violet: #7F77DD;
+  --color-proxie-lavender: #AFA9EC;
+  --color-proxie-cloud: #EEEDFE;
+  --color-proxie-deep: #26215C;
+}
