@@ -233,6 +233,7 @@ function ProfileGate({ onComplete }) {
 // ── Rules Setup Gate ──────────────────────────────────────────────────────────
 function RulesGate({ onComplete }) {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Inter, system-ui, sans-serif', background: '#f7fafc' }}>
@@ -278,7 +279,7 @@ function RulesGate({ onComplete }) {
 
       {/* CTA */}
       <div style={{ padding: '14px 16px 32px', background: 'white', borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
-        <button onClick={onComplete} style={{
+        <button onClick={() => { onComplete(); setTimeout(() => navigate('/rules'), 50) }} style={{
           width: '100%', padding: '15px', background: '#534AB7', color: 'white', border: 'none',
           borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
           boxShadow: '0 4px 14px rgba(83,74,183,0.35)', marginBottom: 10
