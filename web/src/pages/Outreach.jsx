@@ -206,76 +206,102 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }
     }}>{label}</button>
   )
 
+  // Direct dial button — opens native phone app, no agent dispatch
+  const dialBtn = (label = '📞 Call Directly') => (
+    rec.recruiter_phone
+      ? <a href={`tel:${rec.recruiter_phone}`} style={{
+          flex: 1, padding: '9px 10px', minHeight: 40,
+          background: '#2d3748', color: 'white',
+          border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+          cursor: 'pointer', textDecoration: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
+        }}>{label}</a>
+      : <button disabled style={{
+          flex: 1, padding: '9px 10px', minHeight: 40,
+          background: '#e2e8f0', color: '#a0aec0',
+          border: 'none', borderRadius: 8, fontSize: 13, cursor: 'not-allowed'
+        }}>No phone on file</button>
+  )
+
   const hasFmcsa = !!rec.fmcsa_data
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
       {rec.status === 'pending' && (
         <div style={{ display: 'flex', gap: 8 }}>
           {pill('✓ Approve', () => onUpdate(rec.id, 'approved'), '#3182ce', 'white')}
           {pill('Skip', () => onUpdate(rec.id, 'passed'), 'white', '#718096', '#e2e8f0')}
         </div>
       )}
+
       {rec.status === 'approved' && (
         <div style={{ display: 'flex', gap: 8 }}>
+          {/* Agent dispatch — first contact */}
           <button onClick={() => onCall(rec)} style={{
             flex: 1, padding: '9px 10px', minHeight: 40,
             background: rec.recruiter_phone ? '#38a169' : '#e2e8f0',
             color: rec.recruiter_phone ? 'white' : '#a0aec0',
             border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer'
-          }}>📞 Call Recruiter</button>
+          }}>🤖 Dispatch Agent</button>
           {pill('✓ Contacted', () => onUpdate(rec.id, 'contacted'), 'white', '#718096', '#e2e8f0')}
         </div>
       )}
+
       {rec.status === 'contacted' && (<>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px' }}>How did it go?</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {pill('👍 Interested', () => onUpdate(rec.id, 'interested'), '#f0fff4', '#276749', '#9ae6b4')}
           {pill('🕐 Callback', () => onUpdate(rec.id, 'callback'), '#fffbeb', '#92400e', '#fcd34d')}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => onCall(rec)} style={{ flex: 1, padding: '9px', minHeight: 40, background: 'white', color: '#4a5568', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>📞 Call Again</button>
+          {/* Direct dial — agent already called */}
+          {dialBtn('📞 Call Recruiter')}
           {pill('✕ Not a Fit', () => onUpdate(rec.id, 'rejected'), 'white', '#e53e3e', '#fed7d7')}
         </div>
       </>)}
+
       {rec.status === 'callback' && (<>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.4px' }}>⏰ Follow up needed</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => onCall(rec)} style={{ flex: 2, padding: '9px', minHeight: 40, background: '#dd6b20', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>📞 Call Back</button>
+          {/* Direct dial for callback */}
+          {dialBtn('📞 Call Back')}
           {pill('👍 Interested', () => onUpdate(rec.id, 'interested'), 'white', '#276749', '#9ae6b4')}
         </div>
         {pill('✕ Not a Fit', () => onUpdate(rec.id, 'rejected'), 'white', '#e53e3e', '#fed7d7')}
       </>)}
+
       {rec.status === 'interested' && (<>
-        <button onClick={() => onUpdate(rec.id, 'hired')} style={{ width: '100%', padding: '11px', minHeight: 44, background: '#38a169', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>🎉 Got an Offer!</button>
-        <button onClick={() => onCall(rec)} style={{ width: '100%', padding: '9px', background: 'white', color: '#276749', border: '1px solid #9ae6b4', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>📞 Negotiate</button>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#276749', textTransform: 'uppercase', letterSpacing: '.4px' }}>🔥 Hot lead — close it!</div>
+        <button onClick={() => onUpdate(rec.id, 'hired')} style={{
+          width: '100%', padding: '11px', minHeight: 44,
+          background: '#38a169', color: 'white', border: 'none',
+          borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer'
+        }}>🎉 Got an Offer!</button>
+        {/* Direct dial to negotiate */}
+        {dialBtn('📞 Negotiate')}
       </>)}
+
       {rec.status === 'hired' && (
         <div style={{ padding: '10px', background: '#e6fffa', color: '#00897b', border: '1px solid #81e6d9', borderRadius: 8, fontSize: 13, fontWeight: 700, textAlign: 'center' }}>
           🎉 Offer Received
         </div>
       )}
+
       {rec.status === 'rejected' && (<>
         <div style={{ padding: '8px', background: '#fff5f5', color: '#c53030', border: '1px solid #fed7d7', borderRadius: 8, fontSize: 12, textAlign: 'center' }}>Not a fit</div>
         {pill('↺ Reconsider', () => onUpdate(rec.id, 'approved'), 'white', '#718096', '#e2e8f0')}
       </>)}
+
       {rec.status === 'passed' && pill('↺ Reconsider', () => onUpdate(rec.id, 'pending'), 'white', '#718096', '#e2e8f0')}
 
-      {/* FMCSA + Delete row */}
+      {/* FMCSA + Delete */}
       <div style={{ display: 'flex', gap: 8, paddingTop: 4, borderTop: '1px solid #f0f0f0', marginTop: 2 }}>
-        {hasFmcsa ? (
-          <button onClick={onViewFmcsa} style={{
-            flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-            background: '#f0fff4', color: '#276749', border: '1px solid #9ae6b4', fontWeight: 600
-          }}>🛡 View FMCSA ✓</button>
-        ) : (
-          <button onClick={() => onFmcsa(rec.id, rec.carrier_name)} style={{
-            flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-            background: '#faf5ff', color: '#805ad5', border: '1px solid #d6bcfa'
-          }}>🛡 Check FMCSA</button>
-        )}
-        <button onClick={() => onDelete(rec.id, rec.carrier_name)} style={{
-          flex: 1, padding: '8px', background: 'white', color: '#e53e3e',
-          border: '1px solid #fed7d7', borderRadius: 7, fontSize: 12, cursor: 'pointer'
-        }}>🗑 Remove</button>
+        {hasFmcsa
+          ? <button onClick={onViewFmcsa} style={{ flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#f0fff4', color: '#276749', border: '1px solid #9ae6b4', fontWeight: 600 }}>🛡 View FMCSA ✓</button>
+          : <button onClick={() => onFmcsa(rec.id, rec.carrier_name)} style={{ flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#faf5ff', color: '#805ad5', border: '1px solid #d6bcfa' }}>🛡 Check FMCSA</button>
+        }
+        <button onClick={() => onDelete(rec.id, rec.carrier_name)} style={{ flex: 1, padding: '8px', background: 'white', color: '#e53e3e', border: '1px solid #fed7d7', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>🗑 Remove</button>
       </div>
     </div>
   )
