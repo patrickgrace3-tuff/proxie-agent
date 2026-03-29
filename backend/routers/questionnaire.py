@@ -69,7 +69,7 @@ def submit_answers(request: CompleteSetupRequest, user: dict = Depends(get_curre
     if not fields:
         return {"success": False, "error": "No answers provided"}
     fields["setup_complete"] = 1
-    set_clause = ", ".join(f"`{k}` = %s" for k in fields)
+    set_clause = ", ".join(f"{k} = %s" for k in fields)
     with db() as cur:
         cur.execute(f"UPDATE profiles SET {set_clause} WHERE user_id = %s", list(fields.values()) + [user_id])
         cur.execute("SELECT * FROM profiles WHERE user_id = %s", (user_id,))
