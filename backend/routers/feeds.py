@@ -433,7 +433,7 @@ async def sync_feed(feed_id: int, user: dict = Depends(require_admin)):
             ext_id       = j['_id']
             freight_json = json.dumps(j.get('freight_types', []))
             raw_json     = json.dumps({k: v for k, v in j.get('_raw', {}).items()
-                                       if isinstance(v, (str, int, float, bool, type(None)))})[:2000]
+                                       if isinstance(v, (str, int, float, bool, type(None)))})
 
             for uid in active_user_ids:
                 rules = get_user_rules_obj(uid)
@@ -446,7 +446,7 @@ async def sync_feed(feed_id: int, user: dict = Depends(require_admin)):
                              location, cpm, weekly_pay, home_time, freight_types,
                              description, job_url, recruiter_phone, match_score, raw_data)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        ON CONFLICT (feed_id, external_id) DO UPDATE SET
+                        ON CONFLICT (feed_id, external_id, user_id) DO UPDATE SET
                             carrier_name=EXCLUDED.carrier_name,
                             job_title=EXCLUDED.job_title,
                             location=EXCLUDED.location,
