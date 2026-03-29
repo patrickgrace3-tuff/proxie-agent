@@ -35,6 +35,7 @@ def register(request: RegisterRequest):
         cur.execute("""
             INSERT INTO users (email, password_hash, first_name, last_name, phone, role, is_active)
             VALUES (%s, %s, %s, %s, %s, 'driver', 1)
+            RETURNING id
         """, (
             request.email.lower().strip(),
             password_hash,
@@ -42,7 +43,7 @@ def register(request: RegisterRequest):
             request.last_name.strip(),
             request.phone.strip(),
         ))
-        user_id = cur.lastrowid
+        user_id = cur.fetchone()["id"]
 
         cur.execute("INSERT INTO profiles (user_id) VALUES (%s)", (user_id,))
         cur.execute("INSERT INTO agent_rules (user_id) VALUES (%s)", (user_id,))
