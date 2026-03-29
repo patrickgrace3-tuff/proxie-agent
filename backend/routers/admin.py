@@ -214,7 +214,7 @@ def admin_stats(admin: dict = Depends(require_admin)):
         cur.execute("""
             SELECT DATE(created_at) as day, COUNT(*) as signups
             FROM users WHERE role='driver'
-            AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            AND created_at >= NOW() - INTERVAL '30 days'
             GROUP BY DATE(created_at) ORDER BY day
         """)
         signups_last_30 = [row_to_dict(r) for r in cur.fetchall()]
