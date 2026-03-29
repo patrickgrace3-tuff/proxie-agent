@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { client } from '../store/auth'
 import { useAuthStore } from '../store/auth'
 
@@ -224,24 +224,37 @@ export default function Carriers() {
     } catch (e) {}
   }, [])
 
-  const loadJobs = useCallback(async (p = 1) => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ page: p, per_page: 20, min_score: minScore, apply_rules: rulesOn })
-      if (feedFilter) params.set('feed_id', feedFilter)
-      if (search) params.set('search', search)
-      const r = await client.get(`/api/feeds/feeds/jobs?${params}`)
-      setJobs(r.data.jobs || [])
-      setTotal(r.data.total || 0)
-      setTotalPages(r.data.total_pages || 1)
-      setPage(p)
-      setSelected(new Set())
-    } catch (e) { console.error(e) }
-    finally { setLoading(false) }
-  }, [search, minScore, feedFilter, rulesOn])
+    const loadJobs = async (p = 1, overrides = {}) => {
+        setLoading(true)
+        try {
+        const sm = overrides.minScore ?? minScore
+        const ff = overrides.feedFilter ?? feedFilter
+        const ro = overrides.rulesOn ?? rulesOn
+        const sr = overrides.search ?? search
 
-  useEffect(() => { loadFeeds(); loadJobs(1) }, [])
-  useEffect(() => { loadJobs(1) }, [minScore, feedFilter, rulesOn])
+        const params = new URLSearchParams({
+            page: p, per_page: 20, min_score: sm, apply_rules: ro
+        })
+        if (ff) params.set('feed_id', ff)
+        if (sr) params.set('search', sr)
+
+        const r = await client.get(`/api/feeds/feeds/jobs?${params}`)
+        setJobs(r.data.jobs || [])
+        setTotal(r.data.total || 0)
+        setTotalPages(r.data.total_pages || 1)
+        setPage(p)
+        setSelected(new Set())
+        } catch (e) { console.error(e) }
+        finally { setLoading(false) }
+    }
+
+  useEffect(() => {
+  loadFeeds()
+  loadJobs(1)
+}, [])
+  useEffect(() => {
+  loadJobs(1)
+}, [minScore, feedFilter, rulesOn])
 
   const handleSearch = (v) => {
     setSearch(v)
