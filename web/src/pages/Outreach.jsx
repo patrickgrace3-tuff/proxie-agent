@@ -14,6 +14,13 @@ const STATUS_COLORS = {
 
 const STATUS_TABS = ['all', 'pending', 'approved', 'contacted', 'callback', 'interested', 'rejected', 'hired']
 
+const SAFETY_STATUS = {
+  OK:      { bg: '#f0fff4', color: '#276749', border: '#9ae6b4', icon: '✅', label: 'Safety Rating OK' },
+  WARNING: { bg: '#fffbeb', color: '#92400e', border: '#fcd34d', icon: '⚠️', label: 'Conditional — Review Carefully' },
+  UNSAFE:  { bg: '#fff5f5', color: '#c53030', border: '#fed7d7', icon: '🚫', label: 'UNSAFE — Do Not Contact' },
+  UNKNOWN: { bg: '#f7fafc', color: '#718096', border: '#e2e8f0', icon: '🛡', label: 'Not Officially Rated' },
+}
+
 function StatusBadge({ status }) {
   const s = STATUS_COLORS[status] || STATUS_COLORS.pending
   return (
@@ -36,15 +43,170 @@ function ScoreBar({ score }) {
   )
 }
 
-function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onDelete }) {
+// ── FMCSA Bottom Sheet ────────────────────────────────────────────────────────
+function FmcsaSheet({ data, carrierName, onClose }) {
+  const ss = SAFETY_STATUS[data?.safety_status] || SAFETY_STATUS.UNKNOWN
+
+  const stat = (label, value, flag) => value != null && (
+    <div style={{ background: flag ? '#fff5f5' : '#f7fafc', border: `1px solid ${flag ? '#fed7d7' : '#e2e8f0'}`, borderRadius: 8, padding: '10px 12px' }}>
+      <div style={{ fontSize: 10, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: flag ? '#c53030' : '#2d3748' }}>{value}</div>
+    </div>
+  )
+
+  const row = (label, value) => value != null && value !== '' && (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f7f7f7', fontSize: 13 }}>
+      <span style={{ color: '#718096' }}>{label}</span>
+      <span style={{ fontWeight: 500, color: '#2d3748', textAlign: 'right', marginLeft: 12 }}>{value}</span>
+    </div>
+  )
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 17, color: '#1a202c' }}>{data?.legal_name || carrierName}</div>
+              {data?.dot_number && <div style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>DOT# {data.dot_number}{data.mc_number ? ` · MC# ${data.mc_number}` : ''}</div>}
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0', lineHeight: 1, padding: 0 }}>✕</button>
+          </div>
+
+          {/* Safety banner */}
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: ss.bg, border: `1px solid ${ss.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 22 }}>{ss.icon}</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: ss.color }}>{ss.label}</div>
+              <div style={{ fontSize: 11, color: ss.color, opacity: 0.8, marginTop: 1 }}>
+                Rating: {data?.safety_rating || 'Not Rated'}
+                {data?.allowed_to_operate === false ? ' · ⛔ NOT authorized to operate' : ''}
+                {data?.out_of_service ? ' · 🚫 OUT OF SERVICE' : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 24px' }}>
+
+          {/* Fleet stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+            {stat('Drivers', data?.total_drivers ?? data?.fleet_drivers)}
+            {stat('Power Units', data?.power_units)}
+            {stat('Fatal Crashes', data?.crashes_fatal, data?.crashes_fatal > 0)}
+            {stat('Injury Crashes', data?.crashes_injury, data?.crashes_injury > 5)}
+          </div>
+
+          {/* OOS Rates */}
+          {(data?.driver_oos_rate != null || data?.vehicle_oos_rate != null) && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Out-of-Service Rates</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                {stat('Driver OOS', data?.driver_oos_rate != null ? `${Number(data.driver_oos_rate).toFixed(1)}%` : null, data?.driver_oos_rate > 10)}
+                {stat('Vehicle OOS', data?.vehicle_oos_rate != null ? `${Number(data.vehicle_oos_rate).toFixed(1)}%` : null, data?.vehicle_oos_rate > 30)}
+                {stat('Hazmat OOS', data?.hazmat_oos_rate != null ? `${Number(data.hazmat_oos_rate).toFixed(1)}%` : null)}
+              </div>
+              <div style={{ fontSize: 10, color: '#a0aec0', marginTop: 6 }}>National avg: Driver 5.5% · Vehicle 20.8%</div>
+            </div>
+          )}
+
+          {/* Authority */}
+          {(data?.common_authority || data?.contract_authority) && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Operating Authority</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {[
+                  { label: 'Common', value: data?.common_authority },
+                  { label: 'Contract', value: data?.contract_authority },
+                  { label: 'Broker', value: data?.broker_authority },
+                ].filter(a => a.value).map(a => (
+                  <span key={a.label} style={{
+                    padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    background: a.value === 'ACTIVE' ? '#f0fff4' : '#fff5f5',
+                    color: a.value === 'ACTIVE' ? '#276749' : '#c53030',
+                    border: `1px solid ${a.value === 'ACTIVE' ? '#9ae6b4' : '#fed7d7'}`
+                  }}>{a.label}: {a.value}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cargo & operations */}
+          {(data?.cargo_carried?.length > 0 || data?.operation_classes?.length > 0) && (
+            <div style={{ marginBottom: 16 }}>
+              {data?.operation_classes?.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 6 }}>Operation Type</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+                    {data.operation_classes.map(o => <span key={o} style={{ padding: '3px 9px', background: '#EEEDFE', color: '#3C3489', border: '1px solid #AFA9EC', borderRadius: 12, fontSize: 11 }}>{o}</span>)}
+                  </div>
+                </>
+              )}
+              {data?.cargo_carried?.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 6 }}>Cargo Carried</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {data.cargo_carried.map(c => <span key={c} style={{ padding: '3px 9px', background: '#f7fafc', color: '#4a5568', border: '1px solid #e2e8f0', borderRadius: 12, fontSize: 11 }}>{c}</span>)}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Warnings */}
+          {data?.warnings?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#e53e3e', marginBottom: 8 }}>⚠ Flags & Warnings</div>
+              {data.warnings.map((w, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, marginBottom: 6, fontSize: 12, color: '#744210', lineHeight: 1.5 }}>
+                  <span style={{ flexShrink: 0 }}>⚠️</span><span>{w}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Address / contact */}
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Details</div>
+          {row('Address', data?.address)}
+          {row('Phone', data?.phone)}
+          {row('Email', data?.email)}
+          {row('Crash total (24mo)', data?.crash_total != null ? `${data.crash_total} crashes` : null)}
+          {row('Complaint count', data?.complaint_count > 0 ? data.complaint_count : null)}
+
+          {/* FMCSA link */}
+          {data?.dot_number && (
+            <a href={`https://safer.fmcsa.dot.gov/CompanySnapshot.aspx`} target="_blank" rel="noreferrer"
+              style={{ display: 'block', marginTop: 14, textAlign: 'center', fontSize: 12, color: '#3182ce', textDecoration: 'none' }}>
+              View full record on FMCSA SAFER ↗
+            </a>
+          )}
+        </div>
+
+        {/* Close button */}
+        <div style={{ padding: '12px 20px 28px', borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
+          <button onClick={onClose} style={{ width: '100%', padding: '13px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 12, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Action Buttons ────────────────────────────────────────────────────────────
+function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }) {
   const pill = (label, onClick, bg, color, border = 'transparent') => (
     <button onClick={onClick} style={{
       padding: '9px 10px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
       border: `1px solid ${border}`, background: bg, color,
-      fontFamily: 'inherit', fontWeight: 500, whiteSpace: 'nowrap', flex: 1,
-      minHeight: 40
+      fontFamily: 'inherit', fontWeight: 500, whiteSpace: 'nowrap', flex: 1, minHeight: 40
     }}>{label}</button>
   )
+
+  const hasFmcsa = !!rec.fmcsa_data
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -97,14 +259,19 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onDelete }) {
       </>)}
       {rec.status === 'passed' && pill('↺ Reconsider', () => onUpdate(rec.id, 'pending'), 'white', '#718096', '#e2e8f0')}
 
-      {/* FMCSA + Delete */}
+      {/* FMCSA + Delete row */}
       <div style={{ display: 'flex', gap: 8, paddingTop: 4, borderTop: '1px solid #f0f0f0', marginTop: 2 }}>
-        <button onClick={() => onFmcsa(rec.id, rec.carrier_name)} style={{
-          flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-          background: rec.fmcsa_data ? '#f0fff4' : '#faf5ff',
-          color: rec.fmcsa_data ? '#276749' : '#805ad5',
-          border: `1px solid ${rec.fmcsa_data ? '#9ae6b4' : '#d6bcfa'}`
-        }}>🛡 FMCSA{rec.fmcsa_data ? ' ✓' : ''}</button>
+        {hasFmcsa ? (
+          <button onClick={onViewFmcsa} style={{
+            flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+            background: '#f0fff4', color: '#276749', border: '1px solid #9ae6b4', fontWeight: 600
+          }}>🛡 View FMCSA ✓</button>
+        ) : (
+          <button onClick={() => onFmcsa(rec.id, rec.carrier_name)} style={{
+            flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+            background: '#faf5ff', color: '#805ad5', border: '1px solid #d6bcfa'
+          }}>🛡 Check FMCSA</button>
+        )}
         <button onClick={() => onDelete(rec.id, rec.carrier_name)} style={{
           flex: 1, padding: '8px', background: 'white', color: '#e53e3e',
           border: '1px solid #fed7d7', borderRadius: 7, fontSize: 12, cursor: 'pointer'
@@ -114,6 +281,7 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onDelete }) {
   )
 }
 
+// ── Call Modal ────────────────────────────────────────────────────────────────
 function CallModal({ rec, onClose, onDispatched }) {
   const [phone, setPhone] = useState(rec?.recruiter_phone || '')
   const [name, setName] = useState(rec?.recruiter_name || '')
@@ -134,7 +302,7 @@ function CallModal({ rec, onClose, onDispatched }) {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 500, padding: '20px 20px 40px', boxShadow: '0 -8px 40px rgba(0,0,0,0.2)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 500, padding: '20px 20px 40px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700 }}>📞 Call {rec.carrier_name}</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0' }}>✕</button>
@@ -160,6 +328,7 @@ function CallModal({ rec, onClose, onDispatched }) {
   )
 }
 
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function Outreach() {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
@@ -167,9 +336,15 @@ export default function Outreach() {
   const [search, setSearch] = useState('')
   const [callRec, setCallRec] = useState(null)
   const [toast, setToast] = useState('')
+  const [toastType, setToastType] = useState('') // '' | 'error'
   const [expanded, setExpanded] = useState(null)
+  const [fmcsaSheet, setFmcsaSheet] = useState(null) // { data, carrierName }
+  const [fmcsaLoading, setFmcsaLoading] = useState(null) // record id being checked
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
+  const showToast = (msg, type = '') => {
+    setToast(msg); setToastType(type)
+    setTimeout(() => setToast(''), 2500)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -187,7 +362,7 @@ export default function Outreach() {
       await client.post('/api/carriers/update-status', { record_id: id, status })
       showToast('Status updated')
       load()
-    } catch (e) { showToast('Update failed') }
+    } catch (e) { showToast('Update failed', 'error') }
   }
 
   const deleteRecord = async (id, name) => {
@@ -196,23 +371,49 @@ export default function Outreach() {
       await client.delete(`/api/carriers/outreach-record/${id}`)
       setRecords(prev => prev.filter(r => r.id !== id))
       showToast('Removed')
-    } catch (e) { showToast('Delete failed') }
+    } catch (e) { showToast('Delete failed', 'error') }
   }
 
   const fmcsaCheck = async (id, name) => {
-    showToast(`Checking FMCSA for ${name}...`)
+    setFmcsaLoading(id)
+    showToast(`Looking up FMCSA for ${name}...`)
     try {
-      await client.post(`/api/fmcsa/enrich/${id}`)
-      showToast('FMCSA complete')
-      load()
-    } catch (e) { showToast('FMCSA failed') }
+      const r = await client.post(`/api/fmcsa/enrich/${id}`)
+      const d = r.data
+      // Parse fmcsa_data if it came back as a string
+      let fmcsaData = d
+      if (d?.fmcsa_data) {
+        fmcsaData = typeof d.fmcsa_data === 'string' ? JSON.parse(d.fmcsa_data) : d.fmcsa_data
+      }
+      if (d?.found === false || d?.mismatch) {
+        showToast(d.message || 'No FMCSA record found', 'error')
+        setFmcsaLoading(null)
+        return
+      }
+      // Reload records so the record now has fmcsa_data set
+      await load()
+      // Show the sheet with the fresh data
+      setFmcsaSheet({ data: fmcsaData, carrierName: name })
+      setToast('')
+    } catch (e) {
+      showToast('FMCSA lookup failed', 'error')
+    } finally {
+      setFmcsaLoading(null)
+    }
+  }
+
+  const viewFmcsa = (rec) => {
+    let data = rec.fmcsa_data
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data) } catch { data = {} }
+    }
+    setFmcsaSheet({ data, carrierName: rec.carrier_name })
   }
 
   const handleExpand = (id) => {
     const next = expanded === id ? null : id
     setExpanded(next)
     if (next) {
-      // Wait for expand animation then scroll card top into view
       setTimeout(() => {
         document.getElementById(`card-${next}`)
           ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -290,14 +491,12 @@ export default function Outreach() {
           style={{ width: '100%', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', background: 'white', boxSizing: 'border-box', fontFamily: 'inherit' }} />
       </div>
 
-      {/* Cards — this is the only scrollable container */}
+      {/* Cards */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 100px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
 
           {loading ? (
-            [1, 2, 3].map(i => (
-              <div key={i} style={{ background: 'white', borderRadius: 10, height: 90, border: '1px solid #e2e8f0' }} />
-            ))
+            [1, 2, 3].map(i => <div key={i} style={{ background: 'white', borderRadius: 10, height: 90, border: '1px solid #e2e8f0' }} />)
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '48px 20px', color: '#a0aec0' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
@@ -310,50 +509,30 @@ export default function Outreach() {
             </div>
           ) : filtered.map(rec => {
             const isExp = expanded === rec.id
+            const isChecking = fmcsaLoading === rec.id
+
             return (
-              <div
-                key={rec.id}
-                id={`card-${rec.id}`}
-                style={{
-                  background: 'white',
-                  borderRadius: 12,
-                  border: `1px solid ${isExp ? '#AFA9EC' : '#e2e8f0'}`,
-                  // NO overflow:hidden here — that was clipping content
-                }}
-              >
-                {/* Collapsed summary — always visible */}
-                <div
-                  onClick={() => handleExpand(rec.id)}
-                  style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}
-                >
+              <div key={rec.id} id={`card-${rec.id}`} style={{
+                background: 'white', borderRadius: 12,
+                border: `1px solid ${isExp ? '#AFA9EC' : '#e2e8f0'}`,
+              }}>
+                {/* Summary */}
+                <div onClick={() => handleExpand(rec.id)}
+                  style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 4 }}>
                       <span style={{ fontWeight: 600, fontSize: 14, color: '#1a202c' }}>{rec.carrier_name}</span>
                       <StatusBadge status={rec.status} />
+                      {rec.fmcsa_data && <span style={{ fontSize: 10, color: '#276749', background: '#f0fff4', border: '1px solid #9ae6b4', padding: '1px 6px', borderRadius: 8 }}>🛡 FMCSA ✓</span>}
                     </div>
-                    {rec.job_title && (
-                      <div style={{ fontSize: 12, color: '#718096', marginBottom: 5 }}>{rec.job_title}</div>
-                    )}
-                    {/* Info pills */}
+                    {rec.job_title && <div style={{ fontSize: 12, color: '#718096', marginBottom: 5 }}>{rec.job_title}</div>}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {cleanLoc(rec.location) && (
-                        <span style={{ fontSize: 11, color: '#4a5568' }}>📍 {cleanLoc(rec.location)}</span>
-                      )}
-                      {rec.weekly_pay_estimate && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: '#2d3748' }}>
-                          ${Number(rec.weekly_pay_estimate).toLocaleString()}/wk
-                        </span>
-                      )}
-                      {rec.cpm && !rec.weekly_pay_estimate && (
-                        <span style={{ fontSize: 11, color: '#718096' }}>{rec.cpm}¢/mi</span>
-                      )}
-                      {rec.home_time && (
-                        <span style={{ fontSize: 11, color: '#718096' }}>🏠 {rec.home_time}</span>
-                      )}
+                      {cleanLoc(rec.location) && <span style={{ fontSize: 11, color: '#4a5568' }}>📍 {cleanLoc(rec.location)}</span>}
+                      {rec.weekly_pay_estimate && <span style={{ fontSize: 11, fontWeight: 700, color: '#2d3748' }}>${Number(rec.weekly_pay_estimate).toLocaleString()}/wk</span>}
+                      {rec.cpm && !rec.weekly_pay_estimate && <span style={{ fontSize: 11, color: '#718096' }}>{rec.cpm}¢/mi</span>}
+                      {rec.home_time && <span style={{ fontSize: 11, color: '#718096' }}>🏠 {rec.home_time}</span>}
                     </div>
                   </div>
-
-                  {/* Score + chevron */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
                     <ScoreBar score={rec.match_score || 0} />
                     <span style={{ fontSize: 10, color: isExp ? '#534AB7' : '#cbd5e0' }}>
@@ -362,26 +541,16 @@ export default function Outreach() {
                   </div>
                 </div>
 
-                {/* Expanded — action panel, not a scrollable container */}
+                {/* Expanded */}
                 {isExp && (
-                  <div style={{
-                    borderTop: '1px solid #f0f0f0',
-                    padding: '14px 14px 18px',
-                    background: '#fafbfc',
-                    borderRadius: '0 0 12px 12px'
-                  }}>
-                    {/* Contact info */}
+                  <div style={{ borderTop: '1px solid #f0f0f0', padding: '14px 14px 18px', background: '#fafbfc', borderRadius: '0 0 12px 12px' }}>
                     {rec.recruiter_phone ? (
                       <div style={{ fontSize: 12, color: '#3182ce', fontFamily: 'monospace', marginBottom: 10 }}>
                         📞 {rec.recruiter_phone}
-                        {rec.recruiter_name && (
-                          <span style={{ color: '#718096', fontFamily: 'inherit' }}> · {rec.recruiter_name}</span>
-                        )}
+                        {rec.recruiter_name && <span style={{ color: '#718096', fontFamily: 'inherit' }}> · {rec.recruiter_name}</span>}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11, color: '#e53e3e', marginBottom: 10 }}>
-                        ⚠ No phone on file
-                      </div>
+                      <div style={{ fontSize: 11, color: '#e53e3e', marginBottom: 10 }}>⚠ No phone on file</div>
                     )}
                     {rec.job_url && (
                       <a href={rec.job_url} target="_blank" rel="noreferrer"
@@ -390,14 +559,20 @@ export default function Outreach() {
                       </a>
                     )}
 
-                    {/* Action buttons */}
-                    <ActionButtons
-                      rec={rec}
-                      onUpdate={(id, status) => { updateStatus(id, status); setExpanded(null) }}
-                      onCall={r => { setCallRec(r); setExpanded(null) }}
-                      onFmcsa={fmcsaCheck}
-                      onDelete={(id, name) => { deleteRecord(id, name); setExpanded(null) }}
-                    />
+                    {isChecking ? (
+                      <div style={{ padding: '12px', textAlign: 'center', fontSize: 13, color: '#718096' }}>
+                        ⏳ Looking up FMCSA data...
+                      </div>
+                    ) : (
+                      <ActionButtons
+                        rec={rec}
+                        onUpdate={(id, status) => { updateStatus(id, status); setExpanded(null) }}
+                        onCall={r => { setCallRec(r); setExpanded(null) }}
+                        onFmcsa={fmcsaCheck}
+                        onViewFmcsa={() => viewFmcsa(rec)}
+                        onDelete={(id, name) => { deleteRecord(id, name); setExpanded(null) }}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -406,23 +581,29 @@ export default function Outreach() {
         </div>
       </div>
 
-      {/* Footer count */}
+      {/* Footer */}
       <div style={{ background: 'white', borderTop: '1px solid #e2e8f0', padding: '6px 16px', fontSize: 11, color: '#a0aec0', flexShrink: 0 }}>
         {filtered.length} record{filtered.length !== 1 ? 's' : ''}
       </div>
 
-      {callRec && (
-        <CallModal
-          rec={callRec}
-          onClose={() => setCallRec(null)}
-          onDispatched={() => { load(); showToast('Call dispatched!') }}
+      {/* Modals */}
+      {callRec && <CallModal rec={callRec} onClose={() => setCallRec(null)} onDispatched={() => { load(); showToast('Call dispatched!') }} />}
+
+      {fmcsaSheet && (
+        <FmcsaSheet
+          data={fmcsaSheet.data}
+          carrierName={fmcsaSheet.carrierName}
+          onClose={() => setFmcsaSheet(null)}
         />
       )}
 
+      {/* Toast */}
       {toast && (
         <div style={{
           position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
-          padding: '10px 20px', background: '#2d3748', color: 'white',
+          padding: '10px 20px',
+          background: toastType === 'error' ? '#fed7d7' : '#2d3748',
+          color: toastType === 'error' ? '#c53030' : 'white',
           borderRadius: 20, fontSize: 13, fontWeight: 500, zIndex: 1000, whiteSpace: 'nowrap',
           boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
         }}>{toast}</div>
