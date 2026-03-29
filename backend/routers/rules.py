@@ -53,6 +53,16 @@ AGENT_RULES_DB_FIELDS = {
 }
 JSON_FIELDS = {"pay_types_accepted","preferred_regions","states_blacklist","blacklisted_carriers","preferred_carriers"}
 
+BOOL_FIELDS = {
+    "statewide_only","no_touch_freight_required","drop_and_hook_preferred",
+    "team_driving_ok","hazmat_ok","overnights_ok","requires_benefits",
+    "requires_401k","requires_health_insurance","pet_policy_required",
+    "rider_policy_required","auto_call_enabled","auto_email_enabled",
+    "require_approval_before_call","reject_if_forced_dispatch",
+    "reject_if_lease_purchase_only","reject_if_no_ELD_provided",
+    "reject_if_no_sign_on_bonus","rules_active"
+}
+
 def save_rules_for_user(user_id: int, rules: AgentRules):
     """Save rules to PostgreSQL — insert if not exists, update if exists."""
     d = rules.model_dump()
@@ -62,11 +72,12 @@ def save_rules_for_user(user_id: int, rules: AgentRules):
             continue
         if k in JSON_FIELDS:
             row[k] = json.dumps(v if v is not None else [])
+        elif k in BOOL_FIELDS:
+            row[k] = 1 if v else 0
         else:
             row[k] = v
 
     with db() as cur:
-        # Check if row exists
         cur.execute("SELECT id FROM agent_rules WHERE user_id = %s", (user_id,))
         exists = cur.fetchone()
 
