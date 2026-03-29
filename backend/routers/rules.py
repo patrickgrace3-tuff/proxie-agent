@@ -64,7 +64,7 @@ def save_rules_for_user(user_id: int, rules: AgentRules):
             row[k] = json.dumps(v if v is not None else [])
         else:
             row[k] = v
-    set_clause = ", ".join(f"`{k}` = %s" for k in row)
+    set_clause = ", ".join(f"{k} = %s" for k in row)
     with db() as cur:
         cur.execute(f"UPDATE agent_rules SET {set_clause} WHERE user_id = %s",
                     list(row.values()) + [user_id])

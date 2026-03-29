@@ -40,7 +40,7 @@ def _db_update_outreach(record_id: str, updates: dict):
         return
     try:
         from db.database import db as db_ctx
-        set_clause = ", ".join(f"`{k}` = %s" for k in updates)
+        set_clause = ", ".join(f"{k} = %s" for k in updates)
         with db_ctx() as cur:
             cur.execute(
                 f"UPDATE outreach_log SET {set_clause} WHERE id = %s",
@@ -56,7 +56,7 @@ def _db_update_call_log(call_id: str, updates: dict):
         return
     try:
         from db.database import db as db_ctx
-        set_clause = ", ".join(f"`{k}` = %s" for k in updates)
+        set_clause = ", ".join(f"{k} = %s" for k in updates)
         with db_ctx() as cur:
             cur.execute(
                 f"UPDATE call_log SET {set_clause} WHERE call_id = %s",

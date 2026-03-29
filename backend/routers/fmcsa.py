@@ -80,7 +80,7 @@ async def enrich_record(record_id: str, user: dict = Depends(get_current_user)):
         updates["outcome_notes"] = f"Auto-rejected: {safety.get('auto_reject_reason')}"
         print(f"[FMCSA] Auto-rejected {carrier_name}: {safety.get('auto_reject_reason')}")
 
-    set_clause = ", ".join(f"`{k}`=%s" for k in updates)
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
     with db() as cur:
         cur.execute(
             f"UPDATE outreach_log SET {set_clause} WHERE id=%s AND user_id=%s",
@@ -133,7 +133,7 @@ async def enrich_all_records(user: dict = Depends(get_current_user)):
                 updates["status"] = "rejected"
                 updates["outcome_notes"] = f"Auto-rejected: {safety.get('auto_reject_reason')}"
 
-            set_clause = ", ".join(f"`{k}`=%s" for k in updates)
+            set_clause = ", ".join(f"{k}=%s" for k in updates)
             with db() as cur:
                 cur.execute(
                     f"UPDATE outreach_log SET {set_clause} WHERE id=%s AND user_id=%s",

@@ -330,7 +330,7 @@ def update_status(request: UpdateStatusRequest, user: dict = Depends(get_current
     if request.follow_up_date:  fields["follow_up_date"]  = request.follow_up_date
     if request.status == "contacted":
         fields["contacted_at"] = datetime.now(timezone.utc)
-    set_clause = ", ".join(f"`{k}`=%s" for k in fields)
+    set_clause = ", ".join(f"{k}=%s" for k in fields)
     with db() as cur:
         cur.execute(f"UPDATE outreach_log SET {set_clause} WHERE id=%s AND user_id=%s",
                     list(fields.values()) + [request.record_id, user_id])

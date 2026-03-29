@@ -43,7 +43,7 @@ def update_outreach_record(record_id: str, user_id: int, updates: dict):
     """Update fields on an outreach record."""
     if not updates:
         return
-    set_clause = ", ".join(f"`{k}` = %s" for k in updates)
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
     with db() as cur:
         cur.execute(
             f"UPDATE outreach_log SET {set_clause} WHERE id = %s AND user_id = %s",
