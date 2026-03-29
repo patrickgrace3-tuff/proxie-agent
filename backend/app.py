@@ -65,7 +65,7 @@ async def poll_completed_calls():
                         WHERE cl.status IN ('dispatched', 'completed')
                         AND cl.summary IS NULL
                         AND cl.call_id != ''
-                        AND cl.dispatched_at > NOW() - INTERVAL 24 HOUR
+                        AND cl.dispatched_at > NOW() - INTERVAL '24 hours'
                     """)
                     pending = cur.fetchall()
 

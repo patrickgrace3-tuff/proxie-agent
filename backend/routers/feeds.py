@@ -473,10 +473,10 @@ async def create_feed(feed: FeedCreate, user: dict = Depends(get_current_user)):
         cur.execute("""
             INSERT INTO carrier_feeds (user_id, name, feed_type, source, is_url, field_map)
             VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (user_id, feed.name, feed.feed_type, feed.source,
               1 if feed.is_url else 0, field_map_json))
-        feed_id = cur.lastrowid
-    return await sync_feed(feed_id, user)
+        feed_id = cur.fetchone()["id"]
 
 
 @router.post("/feeds/{feed_id}/sync")
@@ -508,13 +508,18 @@ async def sync_feed(feed_id: int, user: dict = Depends(get_current_user)):
                          location, cpm, weekly_pay, home_time, freight_types,
                          description, job_url, recruiter_phone, match_score, raw_data)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON DUPLICATE KEY UPDATE
-                        carrier_name=VALUES(carrier_name), job_title=VALUES(job_title),
-                        location=VALUES(location), cpm=VALUES(cpm),
-                        weekly_pay=VALUES(weekly_pay), home_time=VALUES(home_time),
-                        job_url=VALUES(job_url), description=VALUES(description),
-                        recruiter_phone=VALUES(recruiter_phone),
-                        match_score=VALUES(match_score), raw_data=VALUES(raw_data),
+                    ON CONFLICT (feed_id, external_id) DO UPDATE SET
+                        carrier_name=EXCLUDED.carrier_name,
+                        job_title=EXCLUDED.job_title,
+                        location=EXCLUDED.location,
+                        cpm=EXCLUDED.cpm,
+                        weekly_pay=EXCLUDED.weekly_pay,
+                        home_time=EXCLUDED.home_time,
+                        job_url=EXCLUDED.job_url,
+                        description=EXCLUDED.description,
+                        recruiter_phone=EXCLUDED.recruiter_phone,
+                        match_score=EXCLUDED.match_score,
+                        raw_data=EXCLUDED.raw_data,
                         updated_at=NOW()
                 """, (user_id, feed_id, ext_id, j['carrier_name'], j['job_title'],
                       j['location'], j.get('cpm'), j.get('weekly_pay'), j['home_time'],
