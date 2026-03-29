@@ -478,6 +478,7 @@ async def create_feed(feed: FeedCreate, user: dict = Depends(get_current_user)):
               1 if feed.is_url else 0, field_map_json))
         feed_id = cur.fetchone()["id"]
 
+    return {"success": True, "feed_id": feed_id, "message": "Feed created. Click Sync to load jobs."}
 
 @router.post("/feeds/{feed_id}/sync")
 async def sync_feed(feed_id: int, user: dict = Depends(get_current_user)):
