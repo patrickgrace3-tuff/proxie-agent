@@ -1,33 +1,34 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
+import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
 
-function PrivateRoute({ children }) {
-  const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
-  return isLoggedIn ? children : <Navigate to="/login" replace />
+// Wrap protected routes — if no token, send to /login
+function RequireAuth({ children }) {
+  const { token } = useAuthStore()
+  const location = useLocation()
+
+  if (!token) {
+    // Save where they were trying to go so we can redirect after login
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+  return children
 }
 
 export default function App() {
-  const { login, isLoggedIn } = useAuthStore()
-
-  useEffect(() => {
-    const token = localStorage.getItem('DA_TOKEN')
-    const user = localStorage.getItem('DA_USER')
-    if (token && user) {
-      login(token, JSON.parse(user))
-    }
-  }, [])
-
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/*" element={
-        <PrivateRoute>
-          <Dashboard />
-        </PrivateRoute>
-      } />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/*"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   )
 }

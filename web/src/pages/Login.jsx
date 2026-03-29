@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { useAuthStore, client } from '../store/auth'
 
 function LogoMark({ size = 40 }) {
@@ -28,12 +28,18 @@ const STATS = [
 ]
 
 export default function Login() {
+  const { token, login } = useAuthStore()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from = location.state?.from?.pathname || '/'
+
+  // Already logged in — skip straight to app
+  if (token) return <Navigate to={from} replace />
+
   const [view, setView] = useState('splash')
   const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { login } = useAuthStore()
-  const navigate = useNavigate()
 
   const update = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -43,9 +49,9 @@ export default function Login() {
     try {
       const res = await client.post('/api/auth/login', { email: form.email, password: form.password })
       login(res.data.token, res.data.user)
-      navigate('/')
+      navigate(from, { replace: true })
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Login failed.')
+      setError(err?.response?.data?.detail || 'Login failed. Check your email and password.')
     } finally { setLoading(false) }
   }
 
@@ -58,19 +64,19 @@ export default function Login() {
         first_name: form.first_name, last_name: form.last_name, phone: form.phone,
       })
       login(res.data.token, res.data.user)
-      navigate('/')
+      navigate('/', { replace: true })
     } catch (err) {
       setError(err?.response?.data?.detail || 'Registration failed.')
     } finally { setLoading(false) }
   }
 
-  // ── AUTH SCREENS (login / register) ──────────────────────────────────────
+  // ── Auth screens ──────────────────────────────────────────────────────────
   if (view === 'login' || view === 'register') {
     const isLogin = view === 'login'
     return (
       <div className="min-h-screen flex flex-col" style={{ background: '#534AB7' }}>
 
-        {/* Top brand bar */}
+        {/* Top bar */}
         <div className="flex items-center justify-between px-5 pt-12 pb-6">
           <button onClick={() => { setView('splash'); setError('') }}
             className="text-white/60 text-sm flex items-center gap-1">
@@ -92,8 +98,8 @@ export default function Login() {
           </h2>
           <p className="text-sm text-gray-500 mb-6">
             {isLogin
-              ? <>No account? <button onClick={() => { setView('register'); setError('') }} className="text-proxie-purple font-medium">Sign up free</button></>
-              : <>Have an account? <button onClick={() => { setView('login'); setError('') }} className="text-proxie-purple font-medium">Sign in</button></>
+              ? <>No account? <button onClick={() => { setView('register'); setError('') }} className="font-medium" style={{ color: '#534AB7' }}>Sign up free</button></>
+              : <>Have an account? <button onClick={() => { setView('login'); setError('') }} className="font-medium" style={{ color: '#534AB7' }}>Sign in</button></>
             }
           </p>
 
@@ -110,13 +116,13 @@ export default function Login() {
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">First name</label>
                   <input value={form.first_name} onChange={e => update('first_name', e.target.value)}
                     placeholder="Patrick" required
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-proxie-purple" />
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2" style={{ '--tw-ring-color': '#534AB7' }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Last name</label>
                   <input value={form.last_name} onChange={e => update('last_name', e.target.value)}
                     placeholder="Grace" required
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-proxie-purple" />
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none" />
                 </div>
               </div>
             )}
@@ -125,7 +131,7 @@ export default function Login() {
               <label className="block text-xs font-medium text-gray-700 mb-1.5">Email address</label>
               <input type="email" value={form.email} onChange={e => update('email', e.target.value)}
                 placeholder="you@email.com" required
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-proxie-purple" />
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none" />
             </div>
 
             {!isLogin && (
@@ -133,7 +139,7 @@ export default function Login() {
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Phone number</label>
                 <input type="tel" value={form.phone} onChange={e => update('phone', e.target.value)}
                   placeholder="(555) 555-5555"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-proxie-purple" />
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none" />
               </div>
             )}
 
@@ -143,11 +149,11 @@ export default function Login() {
               </label>
               <input type="password" value={form.password} onChange={e => update('password', e.target.value)}
                 placeholder="••••••••" required
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-proxie-purple" />
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none" />
             </div>
 
             <button type="submit" disabled={loading}
-              className="w-full py-4 rounded-2xl text-sm font-semibold text-white disabled:opacity-50 transition-colors mt-2"
+              className="w-full py-4 rounded-2xl text-sm font-semibold text-white disabled:opacity-50 mt-2"
               style={{ background: '#534AB7' }}>
               {loading
                 ? (isLogin ? 'Signing in...' : 'Creating account...')
@@ -176,15 +182,12 @@ export default function Login() {
     )
   }
 
-  // ── SPLASH SCREEN ─────────────────────────────────────────────────────────
+  // ── Splash ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#534AB7' }}>
 
-      {/* Hero section */}
       <div className="flex flex-col items-center text-center px-6 pt-16 pb-10">
-        <div className="mb-6">
-          <LogoMark size={72} />
-        </div>
+        <div className="mb-6"><LogoMark size={72} /></div>
         <h1 className="text-4xl font-bold text-white leading-tight mb-4" style={{ letterSpacing: '-0.5px' }}>
           Proxie<span style={{ color: '#AFA9EC' }}>Agent</span>
         </h1>
@@ -196,7 +199,6 @@ export default function Login() {
         </p>
       </div>
 
-      {/* Stats strip */}
       <div className="grid grid-cols-4 mx-5 rounded-2xl overflow-hidden mb-8" style={{ background: '#26215C' }}>
         {STATS.map((s, i) => (
           <div key={s.num} className={`py-4 text-center ${i < 3 ? 'border-r border-white/10' : ''}`}>
@@ -206,7 +208,6 @@ export default function Login() {
         ))}
       </div>
 
-      {/* Features */}
       <div className="px-5 mb-8 flex flex-col gap-3">
         {FEATURES.map(f => (
           <div key={f.title} className="flex items-start gap-4 rounded-2xl px-4 py-4" style={{ background: 'rgba(255,255,255,0.08)' }}>
@@ -219,17 +220,14 @@ export default function Login() {
         ))}
       </div>
 
-      {/* CTA buttons */}
       <div className="px-5 pb-10 flex flex-col gap-3">
-        <button
-          onClick={() => { setView('register'); setError('') }}
-          className="w-full py-4 rounded-2xl text-sm font-semibold text-white transition-all"
+        <button onClick={() => { setView('register'); setError('') }}
+          className="w-full py-4 rounded-2xl text-sm font-semibold text-white"
           style={{ background: '#26215C' }}>
           Create free account →
         </button>
-        <button
-          onClick={() => { setView('login'); setError('') }}
-          className="w-full py-4 rounded-2xl text-sm font-semibold transition-all"
+        <button onClick={() => { setView('login'); setError('') }}
+          className="w-full py-4 rounded-2xl text-sm font-semibold"
           style={{ background: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}>
           Sign in
         </button>
