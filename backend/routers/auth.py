@@ -50,6 +50,37 @@ def register(request: RegisterRequest):
 
         token_data = create_token(user_id, request.email.lower(), "driver")
 
+    # ── Auto-backfill feed jobs for new user ──────────────────────────────────
+    # Copy all existing feed jobs from admin (user_id=1) so the new driver
+    # immediately sees carrier jobs without waiting for a manual sync.
+    try:
+        with db() as cur:
+            # Find the admin user to copy jobs from
+            cur.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1")
+            admin_row = cur.fetchone()
+            if admin_row:
+                admin_id = admin_row["id"]
+                cur.execute("""
+                    INSERT INTO feed_jobs (
+                        user_id, feed_id, external_id, carrier_name, job_title,
+                        location, cpm, weekly_pay, home_time, freight_types,
+                        description, job_url, recruiter_phone, match_score,
+                        raw_data, in_outreach
+                    )
+                    SELECT
+                        %s, feed_id, external_id, carrier_name, job_title,
+                        location, cpm, weekly_pay, home_time, freight_types,
+                        description, job_url, recruiter_phone, match_score,
+                        raw_data, 0
+                    FROM feed_jobs
+                    WHERE user_id = %s
+                    ON CONFLICT (feed_id, external_id, user_id) DO NOTHING
+                """, (user_id, admin_id))
+                print(f"[register] backfilled feed jobs for new user {user_id}")
+    except Exception as e:
+        # Non-fatal — user can still log in, jobs will appear after next admin sync
+        print(f"[register] feed backfill failed for user {user_id}: {e}")
+
     return {
         "success": True,
         "token": token_data["token"],
