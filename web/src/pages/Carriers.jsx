@@ -39,15 +39,6 @@ function stripHtml(html) {
     .trim()
 }
 
-// Parse raw_data JSON safely
-function parseRaw(job) {
-  try {
-    if (job.raw_data && typeof job.raw_data === 'string') return JSON.parse(job.raw_data)
-    if (job.raw_data && typeof job.raw_data === 'object') return job.raw_data
-  } catch (e) {}
-  return {}
-}
-
 // ── Feed Manager (admin only) ─────────────────────────────────────────────────
 function FeedManager({ onClose, onRefresh }) {
   const [feeds, setFeeds] = useState([])
@@ -439,34 +430,34 @@ export default function Carriers() {
             const isSel = selected.has(job.id)
             const isExp = expanded === job.id
 
-            // Pull from raw_data first (full schema), fallback to top-level columns
-            const raw = parseRaw(job)
+            // Pull raw_data — backend stores the full feed JSON here
+            let raw = {}
+            try {
+              raw = typeof job.raw_data === 'string' ? JSON.parse(job.raw_data) : (job.raw_data || {})
+            } catch (e) {}
 
-            const carrierName   = raw.client_name    || job.carrier_name  || '—'
-            const jobTitle      = raw.job_title       || job.job_title     || '—'
-            const location      = raw.city && raw.state ? `${raw.city}, ${raw.state}` : job.location || ''
-            const homeTime      = raw.campaign_name_filter || raw.home_time || job.home_time || ''
-            const driverType    = raw.driver_type     || ''
-            const truckType     = raw.truck_type      || ''
-            const licenseType   = raw.license_type    || ''
-            const jobType       = raw.job_type        || ''
-            const jobStatus     = raw.job_status      || ''
-            const salary        = raw.salary          || raw.base_salary   || ''
-            const annualPay     = raw.pay             || ''
+            // Top-level columns (set by backend parser)
+            const carrierName = job.carrier_name || raw.client_name || '—'
+            const jobTitle    = job.job_title    || raw.job_title   || '—'
+            const location    = job.location     || (raw.city && raw.state ? `${raw.city}, ${raw.state}` : '')
+            const homeTime    = job.home_time    || raw.campaign_name_filter || raw.home_time || ''
+            const weeklyPay   = job.weekly_pay   || null
+            const cpm         = job.cpm          || null
 
-            // Pay — prefer stored columns, fall back to raw
-            const weeklyPay     = job.weekly_pay      || null
-            const cpm           = job.cpm             || (raw.cents_per_mile ? String(raw.cents_per_mile) : null)
+            // Extra schema fields from raw_data
+            const driverType  = raw.driver_type  || ''
+            const truckType   = raw.truck_type   || ''
+            const licenseType = raw.license_type || ''
+            const jobType     = raw.job_type     || ''
+            const salary      = raw.salary || raw.base_salary || raw.pay || ''
 
-            // Content sections — all from raw_data schema fields
-            const description   = stripHtml(raw.description   || job.description   || '')
-            const benefits      = stripHtml(raw.job_benefits   || job.job_benefits  || '')
-            const requirements  = stripHtml(raw.job_requirements || job.job_requirements || '')
+            // Content — from raw_data schema fields directly
+            const description  = stripHtml(raw.description      || job.description      || '')
+            const benefits     = stripHtml(raw.job_benefits      || job.job_benefits     || '')
+            const requirements = stripHtml(raw.job_requirements  || job.job_requirements || '')
 
-            // Application link — application_link from schema (NOT base_url)
+            // Full App link — application_link from schema (NOT base_url)
             const appLink = raw.application_link || job.application_link || ''
-
-            const score = job.match_score || 0
 
             return (
               <div key={job.id} id={`carrier-card-${job.id}`} style={{
@@ -478,7 +469,6 @@ export default function Carriers() {
 
                 {/* Summary row */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px' }}>
-
                   {/* Checkbox */}
                   <div onClick={() => toggleSelect(job.id)} style={{
                     width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 2, cursor: 'pointer',
@@ -498,9 +488,9 @@ export default function Carriers() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {weeklyPay && <span style={{ fontSize: 12, fontWeight: 700, color: '#276749' }}>${Number(weeklyPay).toLocaleString()}/wk</span>}
-                      {cpm && <span style={{ fontSize: 12, fontWeight: 600, color: '#2b6cb0' }}>{cpm}¢/mi</span>}
+                      {cpm       && <span style={{ fontSize: 12, fontWeight: 600, color: '#2b6cb0' }}>{cpm}¢/mi</span>}
                       {salary && !weeklyPay && !cpm && <span style={{ fontSize: 12, color: '#718096' }}>{salary}</span>}
-                      <ScoreBar score={score} />
+                      <ScoreBar score={job.match_score || 0} />
                       <span style={{ fontSize: 10, color: isExp ? '#534AB7' : '#cbd5e0', marginLeft: 'auto' }}>
                         {isExp ? '▲ less' : '▼ details'}
                       </span>
@@ -514,52 +504,53 @@ export default function Carriers() {
                   }}>Add</button>
                 </div>
 
-                {/* Expanded panel */}
+                {/* Expanded detail panel */}
                 {isExp && (
                   <div style={{ borderTop: '1px solid #f0f0f0', padding: '14px 14px 16px', background: '#fafbfc', borderRadius: '0 0 10px 10px' }}>
 
-                    {/* Pay / type tiles */}
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                      {weeklyPay && (
-                        <div style={{ background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: '#276749', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Weekly Pay</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: '#276749' }}>${Number(weeklyPay).toLocaleString()}<span style={{ fontSize: 11, fontWeight: 400 }}>/wk</span></div>
-                        </div>
-                      )}
-                      {cpm && (
-                        <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: '#2b6cb0', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>CPM Rate</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: '#2b6cb0' }}>{cpm}<span style={{ fontSize: 11, fontWeight: 400 }}>¢/mile</span></div>
-                        </div>
-                      )}
-                      {annualPay && (
-                        <div style={{ background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: '#276749', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Annual Pay</div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: '#276749' }}>{annualPay}</div>
-                        </div>
-                      )}
-                      {homeTime && (
-                        <div style={{ background: '#faf5ff', border: '1px solid #d6bcfa', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: '#553c9a', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Home Time</div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: '#553c9a' }}>{homeTime}</div>
-                        </div>
-                      )}
-                    </div>
+                    {/* Pay tiles */}
+                    {(weeklyPay || cpm || homeTime || salary) && (
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                        {weeklyPay && (
+                          <div style={{ background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#276749', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Weekly Pay</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#276749' }}>${Number(weeklyPay).toLocaleString()}<span style={{ fontSize: 11, fontWeight: 400 }}>/wk</span></div>
+                          </div>
+                        )}
+                        {cpm && (
+                          <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#2b6cb0', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>CPM Rate</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#2b6cb0' }}>{cpm}<span style={{ fontSize: 11, fontWeight: 400 }}>¢/mile</span></div>
+                          </div>
+                        )}
+                        {!weeklyPay && !cpm && salary && (
+                          <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#2b6cb0', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Pay</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#2b6cb0' }}>{salary}</div>
+                          </div>
+                        )}
+                        {homeTime && (
+                          <div style={{ background: '#faf5ff', border: '1px solid #d6bcfa', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#553c9a', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 3 }}>Home Time</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#553c9a' }}>{homeTime}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                    {/* Meta tags row */}
-                    {(driverType || truckType || licenseType || jobType || jobStatus) && (
+                    {/* Meta chips */}
+                    {(driverType || licenseType || truckType || jobType) && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                         {driverType  && <span style={{ padding: '3px 9px', background: '#EEEDFE', color: '#3C3489', border: '1px solid #AFA9EC', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{driverType}</span>}
                         {licenseType && <span style={{ padding: '3px 9px', background: '#EEEDFE', color: '#3C3489', border: '1px solid #AFA9EC', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{licenseType}</span>}
                         {truckType   && <span style={{ padding: '3px 9px', background: '#f0f4f8', color: '#4a5568', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 11 }}>{truckType}</span>}
                         {jobType     && <span style={{ padding: '3px 9px', background: '#f0f4f8', color: '#4a5568', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 11 }}>{jobType}</span>}
-                        {jobStatus   && <span style={{ padding: '3px 9px', background: '#f0fff4', color: '#276749', border: '1px solid #9ae6b4', borderRadius: 10, fontSize: 11 }}>{jobStatus}</span>}
                       </div>
                     )}
 
-                    {/* Job Description */}
+                    {/* Description */}
                     {description && (
-                      <div style={{ marginBottom: 12 }}>
+                      <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>📋 Job Details</div>
                         <div style={{ fontSize: 12, color: '#2d3748', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                           {description.length > 800 ? description.slice(0, 800) + '...' : description}
@@ -569,7 +560,7 @@ export default function Carriers() {
 
                     {/* Benefits */}
                     {benefits && (
-                      <div style={{ marginBottom: 12 }}>
+                      <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>🏆 Benefits</div>
                         <div style={{ fontSize: 12, color: '#2d3748', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                           {benefits.length > 600 ? benefits.slice(0, 600) + '...' : benefits}
@@ -579,7 +570,7 @@ export default function Carriers() {
 
                     {/* Requirements */}
                     {requirements && (
-                      <div style={{ marginBottom: 12 }}>
+                      <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>✅ Requirements</div>
                         <div style={{ fontSize: 12, color: '#2d3748', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                           {requirements.length > 600 ? requirements.slice(0, 600) + '...' : requirements}
