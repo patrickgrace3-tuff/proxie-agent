@@ -42,8 +42,7 @@ function ChipGroup({ options, value = [], onChange }) {
             border: `1px solid ${on ? '#534AB7' : '#e2e8f0'}`,
             background: on ? '#EEEDFE' : 'white',
             color: on ? '#3C3489' : '#4a5568',
-            fontWeight: on ? 600 : 400, fontFamily: 'inherit',
-            transition: 'all 0.1s'
+            fontWeight: on ? 600 : 400, fontFamily: 'inherit', transition: 'all 0.1s'
           }}>{opt}</button>
         )
       })}
@@ -94,6 +93,155 @@ function FormField({ label, hint, children }) {
       <FieldLabel hint={hint}>{label}</FieldLabel>
       {children}
     </div>
+  )
+}
+
+// ── Account Settings Modal ────────────────────────────────────────────────────
+function AccountSettingsModal({ user }) {
+  const { setUser } = useAuthStore()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({
+    first_name: user?.first_name || '',
+    last_name: user?.last_name || '',
+    phone: user?.phone || '',
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // Sync form when user prop updates
+  useEffect(() => {
+    setForm(f => ({
+      ...f,
+      first_name: user?.first_name || '',
+      last_name: user?.last_name || '',
+      phone: user?.phone || '',
+    }))
+  }, [user])
+
+  const upd = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleSave = async () => {
+    setError(''); setSuccess('')
+    setSaving(true)
+    try {
+      // Update name & phone
+      await client.put('/api/auth/update-profile', {
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        phone: form.phone.trim(),
+      })
+      // Update local store so header reflects new name immediately
+      setUser({ ...user, first_name: form.first_name.trim(), last_name: form.last_name.trim(), phone: form.phone.trim() })
+
+      // Change password only if user filled it in
+      if (form.new_password || form.current_password) {
+        if (!form.current_password) { setError('Enter your current password.'); setSaving(false); return }
+        if (form.new_password !== form.confirm_password) { setError('New passwords do not match.'); setSaving(false); return }
+        if (form.new_password.length < 8) { setError('New password must be at least 8 characters.'); setSaving(false); return }
+        await client.put('/api/auth/change-password', {
+          old_password: form.current_password,
+          new_password: form.new_password,
+        })
+        setForm(p => ({ ...p, current_password: '', new_password: '', confirm_password: '' }))
+      }
+
+      setSuccess('Account updated!')
+      setTimeout(() => { setSuccess(''); setOpen(false) }, 1500)
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Update failed. Please try again.')
+    } finally { setSaving(false) }
+  }
+
+  const field = (label, key, type = 'text', placeholder = '', readOnly = false) => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>{label}</label>
+      {readOnly
+        ? <div style={{ padding: '10px 12px', background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, color: '#718096' }}>{form[key] || placeholder}</div>
+        : <input type={type} value={form[key]} onChange={e => upd(key, e.target.value)} placeholder={placeholder}
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            onFocus={e => e.target.style.borderColor = '#534AB7'}
+            onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+      }
+    </div>
+  )
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} style={{
+        width: '100%', padding: '11px', background: '#EEEDFE', color: '#534AB7',
+        border: '1px solid #AFA9EC', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+      }}>
+        ✏️ Update Name, Phone & Password
+      </button>
+
+      {open && (
+        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+
+            {/* Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Account Settings</h3>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0', lineHeight: 1 }}>✕</button>
+            </div>
+
+            {/* Form */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 8px' }}>
+
+              {/* Name row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {field('First Name', 'first_name', 'text', 'First name')}
+                {field('Last Name', 'last_name', 'text', 'Last name')}
+              </div>
+
+              {/* Email — read only */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Email</label>
+                <div style={{ padding: '10px 12px', background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, color: '#718096' }}>{user?.email}</div>
+                <div style={{ fontSize: 10, color: '#a0aec0', marginTop: 3 }}>Email cannot be changed — contact support if needed</div>
+              </div>
+
+              {field('Phone Number', 'phone', 'tel', '(555) 555-5555')}
+
+              {/* Password section */}
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16, marginTop: 4, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#4a5568', marginBottom: 14 }}>Change Password <span style={{ fontSize: 11, fontWeight: 400, color: '#a0aec0' }}>— leave blank to keep current</span></div>
+                {field('Current Password', 'current_password', 'password', '••••••••')}
+                {field('New Password', 'new_password', 'password', 'Min 8 characters')}
+                {field('Confirm New Password', 'confirm_password', 'password', '••••••••')}
+              </div>
+
+              {error && (
+                <div style={{ background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#c53030', marginBottom: 12 }}>
+                  ⚠ {error}
+                </div>
+              )}
+              {success && (
+                <div style={{ background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#276749', marginBottom: 12 }}>
+                  ✓ {success}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '12px 20px 32px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 10, flexShrink: 0 }}>
+              <button onClick={() => { setOpen(false); setError(''); setSuccess('') }} style={{
+                flex: 1, padding: '13px', border: '1px solid #e2e8f0', background: 'white',
+                borderRadius: 10, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit'
+              }}>Cancel</button>
+              <button onClick={handleSave} disabled={saving} style={{
+                flex: 2, padding: '13px', background: '#534AB7', color: 'white', border: 'none',
+                borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                opacity: saving ? 0.6 : 1, fontFamily: 'inherit'
+              }}>{saving ? 'Saving...' : 'Save Changes'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -205,7 +353,7 @@ function ProfileView({ profile, user, onEdit, onWizard, onReset, onSignOut }) {
         </Card>
       )}
 
-{/* Account Settings */}
+      {/* Account Settings */}
       <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 12, overflow: 'hidden' }}>
         <div style={{ padding: '11px 16px', borderBottom: '1px solid #f0f0f0', fontSize: 12, fontWeight: 700, color: '#4a5568', background: '#fafbfc' }}>⚙️ Account Settings</div>
         <div style={{ padding: 14 }}>
@@ -271,7 +419,6 @@ function ProfileEdit({ profile, onSave, onCancel }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Header */}
       <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <button onClick={onCancel} style={{ background: 'none', border: 'none', fontSize: 13, color: '#718096', cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' }}>← Cancel</button>
         <div style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Edit Profile</div>
@@ -282,9 +429,7 @@ function ProfileEdit({ profile, onSave, onCancel }) {
         }}>{saving ? 'Saving...' : 'Save'}</button>
       </div>
 
-      {/* Form */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 32px', background: '#f7fafc' }}>
-
         <Card title="👤 Contact Information">
           <FormField label="Home Zip Code">
             <TextInput value={form.zip_code} onChange={v => upd('zip_code', v)} placeholder="e.g. 37122" />
@@ -351,7 +496,6 @@ function ProfileEdit({ profile, onSave, onCancel }) {
           </FormField>
         </Card>
 
-        {/* Bottom save */}
         <button onClick={handleSave} disabled={saving} style={{
           width: '100%', padding: '14px', background: '#534AB7', color: 'white', border: 'none',
           borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1,
@@ -373,15 +517,12 @@ function Wizard({ questions, onComplete, onBack }) {
   const section = STEP_SECTIONS[step] || ''
   const answer = answers[q?.id] || ''
   const selected = answer ? answer.split('||') : []
+  const isLast = step === questions.length - 1
 
   const setAnswer = (val) => setAnswers(prev => ({ ...prev, [q.id]: val }))
 
   const toggleOpt = (opt, single) => {
-    if (single) {
-      setAnswer(opt)
-      setTimeout(() => advance(opt), 260)
-      return
-    }
+    if (single) { setAnswer(opt); setTimeout(() => advance(opt), 260); return }
     const arr = selected.includes(opt) ? selected.filter(x => x !== opt) : [...selected, opt]
     setAnswer(arr.join('||'))
   }
@@ -389,13 +530,9 @@ function Wizard({ questions, onComplete, onBack }) {
   const advance = async (forcedVal) => {
     const val = forcedVal !== undefined ? forcedVal : answer
     if (q?.required && !val) { alert('This field is required'); return }
-    if (step < questions.length - 1) { setStep(s => s + 1); return }
+    if (!isLast) { setStep(s => s + 1); return }
     setSubmitting(true)
-    const ans = questions.map(qu => ({
-      field: qu.field,
-      value: answers[qu.id] || '',
-      is_list: qu.type === 'multi_select'
-    }))
+    const ans = questions.map(qu => ({ field: qu.field, value: answers[qu.id] || '', is_list: qu.type === 'multi_select' }))
     try {
       await client.post('/api/questionnaire/submit', { answers: ans })
       onComplete()
@@ -407,12 +544,8 @@ function Wizard({ questions, onComplete, onBack }) {
 
   if (!q) return null
 
-  const isLast = step === questions.length - 1
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Inter, system-ui, sans-serif' }}>
-
-      {/* Progress header */}
       <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '12px 16px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
           <button onClick={step === 0 ? onBack : () => setStep(s => s - 1)} style={{ background: 'none', border: 'none', fontSize: 13, color: '#718096', cursor: 'pointer', padding: 0 }}>← Back</button>
@@ -424,84 +557,43 @@ function Wizard({ questions, onComplete, onBack }) {
         </div>
       </div>
 
-      {/* Question area */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 20px' }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.8px', color: '#534AB7', marginBottom: 10 }}>{section}</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: '#1a202c', lineHeight: 1.35, marginBottom: q.type === 'multi_select' ? 6 : 20 }}>
           {q.question}{q.required && <span style={{ color: '#e53e3e' }}> *</span>}
         </div>
-        {q.type === 'multi_select' && (
-          <div style={{ fontSize: 12, color: '#a0aec0', marginBottom: 20 }}>Select all that apply</div>
-        )}
+        {q.type === 'multi_select' && <div style={{ fontSize: 12, color: '#a0aec0', marginBottom: 20 }}>Select all that apply</div>}
 
-        {/* Text input */}
         {(!q.type || q.type === 'text') && (
-          <input
-            value={answer}
-            onChange={e => setAnswer(e.target.value)}
+          <input value={answer} onChange={e => setAnswer(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') advance() }}
-            placeholder={q.placeholder || ''}
-            autoFocus
-            style={{
-              width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: 10,
-              fontSize: 16, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
-            }}
+            placeholder={q.placeholder || ''} autoFocus
+            style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: 10, fontSize: 16, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
             onFocus={e => e.target.style.borderColor = '#534AB7'}
-            onBlur={e => e.target.style.borderColor = '#e2e8f0'}
-          />
+            onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
         )}
 
-        {/* Single select */}
-        {q.type === 'single_select' && (
+        {(q.type === 'single_select' || q.type === 'multi_select') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {q.options.map(opt => {
               const on = selected.includes(opt)
+              const single = q.type === 'single_select'
               return (
-                <button key={opt} onClick={() => toggleOpt(opt, true)} style={{
+                <button key={opt} onClick={() => toggleOpt(opt, single)} style={{
                   display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px',
                   border: `2px solid ${on ? '#534AB7' : '#e2e8f0'}`,
                   borderRadius: 10, background: on ? '#EEEDFE' : 'white',
                   cursor: 'pointer', fontFamily: 'inherit', fontSize: 14,
-                  color: on ? '#3C3489' : '#2d3748', fontWeight: on ? 600 : 400, textAlign: 'left',
-                  transition: 'all 0.15s'
+                  color: on ? '#3C3489' : '#2d3748', fontWeight: on ? 600 : 400, textAlign: 'left'
                 }}>
                   <div style={{
-                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-                    border: `2px solid ${on ? '#534AB7' : '#cbd5e0'}`,
-                    background: on ? '#534AB7' : 'white',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    {on && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'white' }} />}
-                  </div>
-                  {opt}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Multi select */}
-        {q.type === 'multi_select' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {q.options.map(opt => {
-              const on = selected.includes(opt)
-              return (
-                <button key={opt} onClick={() => toggleOpt(opt, false)} style={{
-                  display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px',
-                  border: `2px solid ${on ? '#534AB7' : '#e2e8f0'}`,
-                  borderRadius: 10, background: on ? '#EEEDFE' : 'white',
-                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 14,
-                  color: on ? '#3C3489' : '#2d3748', fontWeight: on ? 600 : 400, textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}>
-                  <div style={{
-                    width: 22, height: 22, borderRadius: 5, flexShrink: 0,
+                    width: 22, height: 22, borderRadius: single ? '50%' : 5, flexShrink: 0,
                     border: `2px solid ${on ? '#534AB7' : '#cbd5e0'}`,
                     background: on ? '#534AB7' : 'white',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 13, color: 'white', fontWeight: 700
                   }}>
-                    {on && '✓'}
+                    {on && (single ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'white' }} /> : '✓')}
                   </div>
                   {opt}
                 </button>
@@ -511,16 +603,8 @@ function Wizard({ questions, onComplete, onBack }) {
         )}
       </div>
 
-      {/* Nav footer */}
       <div style={{ background: 'white', borderTop: '1px solid #e2e8f0', padding: '14px 20px 20px', flexShrink: 0 }}>
-        {q.type === 'multi_select' && (
-          <button onClick={() => advance()} disabled={submitting} style={{
-            width: '100%', padding: '14px', background: isLast ? '#38a169' : '#534AB7', color: 'white',
-            border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer',
-            opacity: submitting ? 0.6 : 1, fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(83,74,183,0.3)'
-          }}>{submitting ? 'Saving...' : isLast ? 'Submit Profile ✓' : 'Continue →'}</button>
-        )}
-        {(!q.type || q.type === 'text') && (
+        {(q.type === 'multi_select' || !q.type || q.type === 'text') && (
           <button onClick={() => advance()} disabled={submitting} style={{
             width: '100%', padding: '14px', background: isLast ? '#38a169' : '#534AB7', color: 'white',
             border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer',
@@ -538,7 +622,7 @@ export default function Profile() {
   const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
   const [questions, setQuestions] = useState([])
-  const [view, setView] = useState('profile') // profile | edit | wizard
+  const [view, setView] = useState('profile')
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
 
@@ -568,10 +652,7 @@ export default function Profile() {
     } catch (e) { showToast('Reset failed') }
   }
 
-  const handleSignOut = () => {
-    logout()
-    navigate('/login')
-  }
+  const handleSignOut = () => { logout(); navigate('/login') }
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#a0aec0', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -582,38 +663,19 @@ export default function Profile() {
     </div>
   )
 
-  // Wizard view
   if (view === 'wizard') return (
-    <Wizard
-      questions={questions}
-      onComplete={() => { loadAll(); setView('profile'); showToast('Profile saved! 🎉') }}
-      onBack={() => setView('profile')}
-    />
+    <Wizard questions={questions} onComplete={() => { loadAll(); setView('profile'); showToast('Profile saved! 🎉') }} onBack={() => setView('profile')} />
   )
 
-  // Edit view
   if (view === 'edit') return (
-    <ProfileEdit
-      profile={profile}
-      onSave={() => { loadAll(); setView('profile'); showToast('Profile saved!') }}
-      onCancel={() => setView('profile')}
-    />
+    <ProfileEdit profile={profile} onSave={() => { loadAll(); setView('profile'); showToast('Profile saved!') }} onCancel={() => setView('profile')} />
   )
 
-  // Profile view
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Inter, system-ui, sans-serif', background: '#f7fafc' }}>
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <ProfileView
-          profile={profile}
-          user={user}
-          onEdit={() => setView('edit')}
-          onWizard={() => setView('wizard')}
-          onReset={handleReset}
-          onSignOut={handleSignOut}
-        />
+        <ProfileView profile={profile} user={user} onEdit={() => setView('edit')} onWizard={() => setView('wizard')} onReset={handleReset} onSignOut={handleSignOut} />
       </div>
-
       {toast && (
         <div style={{
           position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
