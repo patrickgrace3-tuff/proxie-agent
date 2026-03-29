@@ -305,9 +305,12 @@ export default function Outreach() {
                     const next = isExp ? null : rec.id
                     setExpanded(next)
                     if (next) {
-                        setTimeout(() => {
-                        document.getElementById(`card-${rec.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-                        }, 50)
+                    setTimeout(() => {
+                        const card = document.getElementById(`card-${rec.id}`)
+                        if (card) {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }
+                    }, 150)
                     }
                     }}
                 style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -332,7 +335,7 @@ export default function Outreach() {
 
               {/* Actions */}
               {isExp && (
-                <div style={{ borderTop: '1px solid #f0f0f0', padding: '12px 14px', background: '#fafbfc', paddingBottom: 80 }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 120px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {rec.recruiter_phone && (
                     <div style={{ fontSize: 12, color: '#3182ce', fontFamily: 'monospace', marginBottom: 8 }}>
                       📞 {rec.recruiter_phone}
