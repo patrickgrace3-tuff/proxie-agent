@@ -95,7 +95,7 @@ function AnalysisModal({ call, onClose }) {
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>
               <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
-              <div style={{ fontSize: 13 }}>Fetching from Bland AI...</div>
+              <div style={{ fontSize: 13 }}>Fetching from Proxie AI...</div>
             </div>
           ) : data?.error ? (
             <div style={{ color: '#c53030', fontSize: 13, padding: 16, background: '#fff5f5', borderRadius: 8 }}>{data.error}</div>
