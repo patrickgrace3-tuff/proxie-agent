@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { client } from '../store/auth'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 const STATUS_COLORS = {
   pending:    { bg: '#71809622', color: '#718096', border: '#71809644', label: 'Pending' },
@@ -176,6 +177,7 @@ export default function Outreach() {
   const [callRec, setCallRec] = useState(null)
   const [toast, setToast] = useState('')
   const [expanded, setExpanded] = useState(null)
+  
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
 
@@ -298,9 +300,17 @@ export default function Outreach() {
         ) : filtered.map(rec => {
           const isExp = expanded === rec.id
           return (
-            <div key={rec.id} style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <div key={rec.id} id={`card-${rec.id}`} style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
               {/* Summary row */}
-              <div onClick={() => setExpanded(isExp ? null : rec.id)}
+              <div onClick={() => {
+                    const next = isExp ? null : rec.id
+                    setExpanded(next)
+                    if (next) {
+                        setTimeout(() => {
+                        document.getElementById(`card-${rec.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                        }, 50)
+                    }
+                    }}
                 style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
@@ -323,7 +333,7 @@ export default function Outreach() {
 
               {/* Actions */}
               {isExp && (
-                <div style={{ borderTop: '1px solid #f0f0f0', padding: '12px 14px', background: '#fafbfc' }}>
+                <div style={{ borderTop: '1px solid #f0f0f0', padding: '12px 14px', background: '#fafbfc', paddingBottom: 80 }}>
                   {rec.recruiter_phone && (
                     <div style={{ fontSize: 12, color: '#3182ce', fontFamily: 'monospace', marginBottom: 8 }}>
                       📞 {rec.recruiter_phone}
