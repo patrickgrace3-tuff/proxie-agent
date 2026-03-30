@@ -516,7 +516,7 @@ function PhotoCaptureModal({ user, onPhotoSaved }) {
                     </div>
                   )}
                   <div style={{ background: '#EEEDFE', border: '1px solid #AFA9EC', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: 13, color: '#3C3489', lineHeight: 1.7 }}>
-                    Take a selfie and use it as-is, or generate a <strong>comic book cartoon</strong> version of yourself as a truck driver using GPT-4o + DALL-E 3.
+                    Take a selfie and use it as-is, or generate a <strong>comic book cartoon</strong> version of yourself as a truck driver using Proxie AI.
                   </div>
                   <button onClick={startCamera} style={{
                     width: '100%', padding: '14px', background: '#534AB7', color: 'white',
