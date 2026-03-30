@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore, client } from '../store/auth'
 
@@ -222,10 +222,7 @@ function VoiceSettingsModal() {
   const [lookupResults, setLookupResults] = useState(null)
   const [looking, setLooking] = useState(false)
 
-  const saveVoice = (v) => {
-    setVoice(v)
-    localStorage.setItem('da_voice', v)
-  }
+  const saveVoice = (v) => { setVoice(v); localStorage.setItem('da_voice', v) }
 
   const sendTestCall = async () => {
     if (!testPhone) { setTestResult({ ok: false, msg: 'Enter your phone number first' }); return }
@@ -275,32 +272,21 @@ function VoiceSettingsModal() {
       {open && (
         <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🎙️ Voice Agent Settings</h3>
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0', lineHeight: 1 }}>✕</button>
             </div>
-
             <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-
-              {/* How it works */}
               <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#2c5282', lineHeight: 1.6, marginBottom: 20 }}>
                 The voice agent calls as a <strong>talent representative</strong> on your behalf. It introduces itself, pitches your qualifications, asks about pay and home time, and schedules a callback or leaves a voicemail if there's no answer. Every call is recorded and automatically analyzed.
               </div>
-
-              {/* Voice selector */}
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Agent Voice</label>
-                <select value={voice} onChange={e => saveVoice(e.target.value)} style={{
-                  width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8,
-                  fontSize: 14, outline: 'none', background: 'white', fontFamily: 'inherit', color: '#2d3748'
-                }}>
+                <select value={voice} onChange={e => saveVoice(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', background: 'white', fontFamily: 'inherit', color: '#2d3748' }}>
                   {VOICES.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
                 </select>
                 <div style={{ fontSize: 11, color: '#a0aec0', marginTop: 5 }}>Changes apply on your next dispatched call.</div>
               </div>
-
-              {/* Info tiles */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
                 {[
                   { icon: '⏱', title: 'Call Length', desc: '2 minutes max — keeps calls focused and respectful of recruiter time' },
@@ -314,22 +300,14 @@ function VoiceSettingsModal() {
                   </div>
                 ))}
               </div>
-
-              {/* Carrier number lookup */}
               <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, marginBottom: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: '#2d3748' }}>🔍 Carrier Recruiting Numbers</div>
                 <div style={{ fontSize: 12, color: '#718096', marginBottom: 12, lineHeight: 1.6 }}>
-                  Automatically look up driver recruiting phone numbers for carriers in your outreach list. Only high-confidence numbers are returned — uncertain ones are flagged for manual verification.
+                  Automatically look up driver recruiting phone numbers for carriers in your outreach list.
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                  <button onClick={() => runLookup(false)} disabled={looking} style={{
-                    padding: '8px 14px', background: '#3182ce', color: 'white', border: 'none',
-                    borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: looking ? 0.6 : 1
-                  }}>Find recruiting numbers</button>
-                  <button onClick={() => runLookup(true)} disabled={looking} style={{
-                    padding: '8px 12px', background: 'white', color: '#718096',
-                    border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, cursor: 'pointer', opacity: looking ? 0.6 : 1
-                  }}>↺ Refresh</button>
+                  <button onClick={() => runLookup(false)} disabled={looking} style={{ padding: '8px 14px', background: '#3182ce', color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: looking ? 0.6 : 1 }}>Find recruiting numbers</button>
+                  <button onClick={() => runLookup(true)} disabled={looking} style={{ padding: '8px 12px', background: 'white', color: '#718096', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, cursor: 'pointer', opacity: looking ? 0.6 : 1 }}>↺ Refresh</button>
                   {lookupStatus && <span style={{ fontSize: 12, color: '#718096' }}>{lookupStatus}</span>}
                 </div>
                 {lookupResults && (
@@ -350,9 +328,7 @@ function VoiceSettingsModal() {
                               <td style={{ padding: '7px 10px', fontWeight: 500 }}>{name}</td>
                               <td style={{ padding: '7px 10px', fontFamily: 'monospace', color: data.phone ? '#3182ce' : '#a0aec0' }}>{data.phone || '—'}</td>
                               <td style={{ padding: '7px 10px' }}>
-                                <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>
-                                  {data.confidence}
-                                </span>
+                                <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{data.confidence}</span>
                               </td>
                               <td style={{ padding: '7px 10px', color: '#718096', fontSize: 11 }}>{data.note || ''}</td>
                             </tr>
@@ -363,41 +339,292 @@ function VoiceSettingsModal() {
                   </div>
                 )}
               </div>
-
-              {/* Test call */}
               <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: '#2d3748' }}>🧪 Test Call</div>
-                <div style={{ fontSize: 12, color: '#718096', marginBottom: 12 }}>
-                  Call your own phone number to preview how the agent sounds before it contacts real recruiters.
-                </div>
+                <div style={{ fontSize: 12, color: '#718096', marginBottom: 12 }}>Call your own phone number to preview how the agent sounds before it contacts real recruiters.</div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Your phone number</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input value={testPhone} onChange={e => setTestPhone(e.target.value)} placeholder="+15551234567"
                     style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', fontFamily: 'inherit' }}
                     onFocus={e => e.target.style.borderColor = '#534AB7'}
                     onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                  <button onClick={sendTestCall} disabled={testing} style={{
-                    padding: '10px 16px', background: '#3182ce', color: 'white', border: 'none',
-                    borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    whiteSpace: 'nowrap', opacity: testing ? 0.6 : 1
-                  }}>{testing ? 'Calling...' : '📞 Send test call'}</button>
+                  <button onClick={sendTestCall} disabled={testing} style={{ padding: '10px 16px', background: '#3182ce', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: testing ? 0.6 : 1 }}>
+                    {testing ? 'Calling...' : '📞 Send test call'}
+                  </button>
                 </div>
                 {testResult && (
-                  <div style={{
-                    marginTop: 10, padding: '8px 12px', borderRadius: 7, fontSize: 12,
-                    background: testResult.ok ? '#f0fff4' : '#fff5f5',
-                    color: testResult.ok ? '#22543d' : '#742a2a',
-                    border: `1px solid ${testResult.ok ? '#9ae6b4' : '#fc8181'}`
-                  }}>{testResult.msg}</div>
+                  <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 7, fontSize: 12, background: testResult.ok ? '#f0fff4' : '#fff5f5', color: testResult.ok ? '#22543d' : '#742a2a', border: `1px solid ${testResult.ok ? '#9ae6b4' : '#fc8181'}` }}>
+                    {testResult.msg}
+                  </div>
                 )}
               </div>
             </div>
-
             <div style={{ padding: '12px 20px 32px', borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
-              <button onClick={() => setOpen(false)} style={{
-                width: '100%', padding: '13px', border: '1px solid #e2e8f0', background: 'white',
-                borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit'
-              }}>Done</button>
+              <button onClick={() => setOpen(false)} style={{ width: '100%', padding: '13px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Photo Capture Modal ───────────────────────────────────────────────────────
+function PhotoCaptureModal({ user, onPhotoSaved }) {
+  const [open, setOpen]       = useState(false)
+  const [mode, setMode]       = useState('menu')  // menu | camera | preview | generating | result
+  const [photo, setPhoto]     = useState(null)
+  const [aiPhoto, setAiPhoto] = useState(null)
+  const [aiDesc, setAiDesc]   = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
+  const [stream, setStream]   = useState(null)
+  const videoRef  = useRef(null)
+  const canvasRef = useRef(null)
+
+  const stopCamera = () => {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); setStream(null) }
+  }
+
+  const startCamera = async () => {
+    setError('')
+    setMode('camera')
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+      })
+      setStream(s)
+      setTimeout(() => {
+        if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play() }
+      }, 150)
+    } catch (e) {
+      setError('Camera access denied. Please allow camera access in your browser settings.')
+      setMode('menu')
+    }
+  }
+
+  const capturePhoto = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0)
+    setPhoto(canvas.toDataURL('image/jpeg', 0.85))
+    stopCamera()
+    setMode('preview')
+  }
+
+  const retake = () => { setPhoto(null); setAiPhoto(null); setError(''); startCamera() }
+
+  const savePhoto = async () => {
+    setSaving(true); setError('')
+    try {
+      await client.post('/api/auth/upload-photo', { photo })
+      onPhotoSaved(photo, user?.ai_photo || null)
+      handleClose()
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Failed to save photo.')
+    } finally { setSaving(false) }
+  }
+
+  const generateAI = async () => {
+    setMode('generating'); setError('')
+    try {
+      const r = await client.post('/api/auth/generate-ai-photo', { photo })
+      setAiPhoto(r.data.ai_photo)
+      setAiDesc(r.data.description)
+      setMode('result')
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'AI generation failed. Please try again.')
+      setMode('preview')
+    }
+  }
+
+  const saveAiPhoto = async () => {
+    setSaving(true); setError('')
+    try {
+      await client.post('/api/auth/upload-photo', { photo })
+      onPhotoSaved(photo, aiPhoto)
+      handleClose()
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Failed to save.')
+    } finally { setSaving(false) }
+  }
+
+  const deletePhotos = async () => {
+    if (!confirm('Remove your profile photo and AI portrait?')) return
+    try {
+      await client.delete('/api/auth/delete-photo', { data: { which: 'both' } })
+      onPhotoSaved(null, null)
+      handleClose()
+    } catch (e) { setError('Failed to remove photos.') }
+  }
+
+  const handleClose = () => {
+    stopCamera()
+    setMode('menu'); setPhoto(null); setAiPhoto(null)
+    setAiDesc(''); setError(''); setOpen(false)
+  }
+
+  const hasPhotos = user?.profile_photo || user?.ai_photo
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} style={{
+        width: '100%', padding: '11px', background: '#EEEDFE', color: '#534AB7',
+        border: '1px solid #AFA9EC', borderRadius: 8, fontSize: 13, fontWeight: 600,
+        cursor: 'pointer', fontFamily: 'inherit', marginTop: 8
+      }}>
+        {hasPhotos ? '📷 Update Profile Photo' : '📷 Add Profile Photo'}
+      </button>
+
+      {open && (
+        <div onClick={handleClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
+                {mode === 'menu'       && '📷 Profile Photo'}
+                {mode === 'camera'     && '📷 Take Your Photo'}
+                {mode === 'preview'    && '✅ Use This Photo?'}
+                {mode === 'generating' && '🤖 Generating Your Portrait...'}
+                {mode === 'result'     && '🎨 Your Comic Book Portrait'}
+              </h3>
+              <button onClick={handleClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0' }}>✕</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+
+              {/* MENU */}
+              {mode === 'menu' && (
+                <div>
+                  {hasPhotos && (
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 20, justifyContent: 'center' }}>
+                      {user?.profile_photo && (
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Your Photo</div>
+                          <img src={user.profile_photo} alt="Profile" style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '3px solid #534AB7' }} />
+                        </div>
+                      )}
+                      {user?.ai_photo && (
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Comic Portrait</div>
+                          <img src={user.ai_photo} alt="Comic Portrait" style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '3px solid #7F77DD' }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ background: '#EEEDFE', border: '1px solid #AFA9EC', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: 13, color: '#3C3489', lineHeight: 1.7 }}>
+                    Take a selfie and use it as-is, or generate a <strong>comic book cartoon</strong> version of yourself as a truck driver using GPT-4o + DALL-E 3.
+                  </div>
+                  <button onClick={startCamera} style={{
+                    width: '100%', padding: '14px', background: '#534AB7', color: 'white',
+                    border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10,
+                    boxShadow: '0 4px 14px rgba(83,74,183,0.3)'
+                  }}>📷 Open Camera</button>
+                  {hasPhotos && (
+                    <button onClick={deletePhotos} style={{ width: '100%', padding: '11px', background: 'white', color: '#e53e3e', border: '1px solid #fed7d7', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      🗑 Remove Photos
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* CAMERA */}
+              {mode === 'camera' && (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ background: '#000', borderRadius: 12, overflow: 'hidden', marginBottom: 16, position: 'relative', aspectRatio: '4/3' }}>
+                    <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                      <div style={{ width: 150, height: 195, borderRadius: '50%', border: '3px dashed rgba(255,255,255,0.7)', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)' }} />
+                    </div>
+                    <div style={{ position: 'absolute', bottom: 10, width: '100%', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>Center your face in the oval</div>
+                  </div>
+                  <button onClick={capturePhoto} style={{ width: 74, height: 74, borderRadius: '50%', background: 'white', border: '5px solid #534AB7', cursor: 'pointer', fontSize: 28, boxShadow: '0 0 0 3px #534AB7, 0 4px 16px rgba(0,0,0,0.3)' }}>📸</button>
+                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  <div style={{ marginTop: 12 }}>
+                    <button onClick={() => { stopCamera(); setMode('menu') }} style={{ background: 'none', border: 'none', color: '#718096', fontSize: 13, cursor: 'pointer' }}>← Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* PREVIEW */}
+              {mode === 'preview' && photo && (
+                <div style={{ textAlign: 'center' }}>
+                  <img src={photo} alt="Preview" style={{ width: 200, height: 200, borderRadius: '50%', objectFit: 'cover', border: '4px solid #534AB7', display: 'block', margin: '0 auto 24px' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button onClick={savePhoto} disabled={saving} style={{ padding: '13px', background: '#38a169', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
+                      {saving ? 'Saving...' : '✅ Use This Photo'}
+                    </button>
+                    <button onClick={generateAI} style={{ padding: '13px', background: '#534AB7', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(83,74,183,0.3)' }}>
+                      🎨 Generate Comic Book Portrait
+                    </button>
+                    <div style={{ fontSize: 11, color: '#a0aec0' }}>Uses GPT-4o Vision + DALL-E 3 · ~$0.05</div>
+                    <button onClick={retake} style={{ padding: '11px', background: 'white', color: '#718096', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>↺ Retake Photo</button>
+                  </div>
+                </div>
+              )}
+
+              {/* GENERATING */}
+              {mode === 'generating' && (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ fontSize: 52, marginBottom: 16 }}>🎨</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#2d3748', marginBottom: 10 }}>Creating your comic portrait...</div>
+                  <div style={{ fontSize: 13, color: '#718096', lineHeight: 1.8, marginBottom: 24 }}>
+                    GPT-4o is analyzing your appearance, then DALL-E 3 is drawing your comic book truck driver character. This takes about 20–30 seconds.
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                    {[0, 1, 2].map(i => (
+                      <div key={i} style={{ width: 12, height: 12, borderRadius: '50%', background: '#534AB7', animation: `proxiePulse 1.4s ${i * 0.2}s ease-in-out infinite` }} />
+                    ))}
+                  </div>
+                  <style>{`@keyframes proxiePulse { 0%,100%{opacity:.3;transform:scale(.8)} 50%{opacity:1;transform:scale(1.2)} }`}</style>
+                </div>
+              )}
+
+              {/* RESULT */}
+              {mode === 'result' && aiPhoto && (
+                <div>
+                  <div style={{ display: 'flex', gap: 16, marginBottom: 20, alignItems: 'center' }}>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 8 }}>Your Photo</div>
+                      <img src={photo} alt="Original" style={{ width: '100%', maxWidth: 130, height: 130, borderRadius: 10, objectFit: 'cover', border: '2px solid #e2e8f0', display: 'block', margin: '0 auto' }} />
+                    </div>
+                    <div style={{ fontSize: 24, color: '#a0aec0', flexShrink: 0 }}>→</div>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 8 }}>Comic Portrait</div>
+                      <img src={aiPhoto} alt="Comic Portrait" style={{ width: '100%', maxWidth: 130, height: 130, borderRadius: 10, objectFit: 'cover', border: '3px solid #534AB7', display: 'block', margin: '0 auto' }} />
+                    </div>
+                  </div>
+                  {aiDesc && (
+                    <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', fontSize: 11, color: '#718096', marginBottom: 16, lineHeight: 1.7 }}>
+                      <strong style={{ color: '#4a5568' }}>GPT-4o saw: </strong>{aiDesc}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button onClick={saveAiPhoto} disabled={saving} style={{ padding: '13px', background: '#534AB7', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1, boxShadow: '0 4px 14px rgba(83,74,183,0.3)' }}>
+                      {saving ? 'Saving...' : '✅ Use Comic Portrait'}
+                    </button>
+                    <button onClick={savePhoto} disabled={saving} style={{ padding: '11px', background: 'white', color: '#276749', border: '1px solid #9ae6b4', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
+                      Use original photo instead
+                    </button>
+                    <button onClick={() => { setAiPhoto(null); setAiDesc(''); generateAI() }} style={{ padding: '11px', background: 'white', color: '#718096', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      ↺ Regenerate portrait
+                    </button>
+                    <button onClick={retake} style={{ padding: '9px', background: 'white', color: '#a0aec0', border: 'none', borderRadius: 10, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Take a new photo
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div style={{ background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#c53030', marginTop: 12 }}>
+                  ⚠ {error}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -407,7 +634,7 @@ function VoiceSettingsModal() {
 }
 
 // ── Profile View ──────────────────────────────────────────────────────────────
-function ProfileView({ profile, user, onEdit, onWizard, onReset, onSignOut }) {
+function ProfileView({ profile, user, photos, onPhotoSaved, onEdit, onWizard, onReset, onSignOut }) {
   const isEmpty = !profile || (!profile.setup_complete && !profile.zip_code && !profile.cdl_experience)
 
   if (isEmpty) {
@@ -432,19 +659,31 @@ function ProfileView({ profile, user, onEdit, onWizard, onReset, onSignOut }) {
     </div>
   ) : null
 
+  // Merge live photo state into user object for the modal
+  const userWithPhotos = { ...user, profile_photo: photos.profile, ai_photo: photos.ai }
+  // Display photo: prefer AI/comic portrait, fall back to regular photo, fall back to initials
+  const displayPhoto = photos.ai || photos.profile
+
   return (
     <div style={{ padding: '12px 12px 100px', background: '#f7fafc' }}>
 
       {/* User card */}
       <div style={{ background: 'linear-gradient(135deg, #534AB7, #26215C)', borderRadius: 14, padding: '18px 16px', marginBottom: 12, color: 'white' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
-            {(user?.first_name?.[0] || '') + (user?.last_name?.[0] || '')}
+          {/* Photo or initials */}
+          <div style={{ width: 56, height: 56, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.3)' }}>
+            {displayPhoto
+              ? <img src={displayPhoto} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <div style={{ width: '100%', height: '100%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>
+                  {(user?.first_name?.[0] || '') + (user?.last_name?.[0] || '')}
+                </div>
+            }
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 17 }}>{user?.first_name} {user?.last_name}</div>
             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{user?.email}</div>
             {profile?.cdl_experience && <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{profile.cdl_experience} CDL experience</div>}
+            {photos.ai && <div style={{ fontSize: 10, opacity: 0.5, marginTop: 2 }}>🎨 Comic portrait active</div>}
           </div>
           <button onClick={onEdit} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Edit</button>
         </div>
@@ -507,6 +746,7 @@ function ProfileView({ profile, user, onEdit, onWizard, onReset, onSignOut }) {
         <div style={{ padding: 14 }}>
           <AccountSettingsModal user={user} />
           <VoiceSettingsModal />
+          <PhotoCaptureModal user={userWithPhotos} onPhotoSaved={onPhotoSaved} />
         </div>
       </div>
 
@@ -692,13 +932,7 @@ function Wizard({ questions, onComplete, onBack }) {
                   cursor: 'pointer', fontFamily: 'inherit', fontSize: 14,
                   color: on ? '#3C3489' : '#2d3748', fontWeight: on ? 600 : 400, textAlign: 'left'
                 }}>
-                  <div style={{
-                    width: 22, height: 22, borderRadius: single ? '50%' : 5, flexShrink: 0,
-                    border: `2px solid ${on ? '#534AB7' : '#cbd5e0'}`,
-                    background: on ? '#534AB7' : 'white',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 13, color: 'white', fontWeight: 700
-                  }}>
+                  <div style={{ width: 22, height: 22, borderRadius: single ? '50%' : 5, flexShrink: 0, border: `2px solid ${on ? '#534AB7' : '#cbd5e0'}`, background: on ? '#534AB7' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'white', fontWeight: 700 }}>
                     {on && (single ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'white' }} /> : '✓')}
                   </div>
                   {opt}
@@ -730,22 +964,30 @@ export default function Profile() {
   const [view, setView] = useState('profile')
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
+  const [photos, setPhotos] = useState({ profile: null, ai: null })
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
 
   const loadAll = useCallback(async () => {
     try {
-      const [pr, qr] = await Promise.all([
+      const [pr, qr, me] = await Promise.all([
         client.get('/api/questionnaire/profile'),
-        client.get('/api/questionnaire/questions')
+        client.get('/api/questionnaire/questions'),
+        client.get('/api/auth/me'),
       ])
       setProfile(pr.data)
       setQuestions(qr.data.questions || [])
+      setPhotos({ profile: me.data.profile_photo || null, ai: me.data.ai_photo || null })
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  const handlePhotoSaved = (profilePhoto, aiPhoto) => {
+    setPhotos({ profile: profilePhoto, ai: aiPhoto })
+    showToast(aiPhoto ? '🎨 Comic portrait saved!' : '📷 Photo saved!')
+  }
 
   const handleReset = async () => {
     if (!confirm('Reset your profile and outreach log? This cannot be undone.')) return
@@ -779,7 +1021,16 @@ export default function Profile() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Inter, system-ui, sans-serif', background: '#f7fafc' }}>
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <ProfileView profile={profile} user={user} onEdit={() => setView('edit')} onWizard={() => setView('wizard')} onReset={handleReset} onSignOut={handleSignOut} />
+        <ProfileView
+          profile={profile}
+          user={user}
+          photos={photos}
+          onPhotoSaved={handlePhotoSaved}
+          onEdit={() => setView('edit')}
+          onWizard={() => setView('wizard')}
+          onReset={handleReset}
+          onSignOut={handleSignOut}
+        />
       </div>
       {toast && (
         <div style={{
