@@ -561,7 +561,7 @@ function PhotoCaptureModal({ user, onPhotoSaved }) {
                     <button onClick={generateAI} style={{ padding: '13px', background: '#534AB7', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(83,74,183,0.3)' }}>
                       🎨 Generate Comic Book Portrait
                     </button>
-                    <div style={{ fontSize: 11, color: '#a0aec0' }}>Uses GPT-4o Vision + DALL-E 3 · ~$0.05</div>
+                    <div style={{ fontSize: 11, color: '#a0aec0' }}>Powered by Proxie AI · ~$0.10</div>
                     <button onClick={retake} style={{ padding: '11px', background: 'white', color: '#718096', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>↺ Retake Photo</button>
                   </div>
                 </div>
@@ -573,7 +573,7 @@ function PhotoCaptureModal({ user, onPhotoSaved }) {
                   <div style={{ fontSize: 52, marginBottom: 16 }}>🎨</div>
                   <div style={{ fontWeight: 700, fontSize: 16, color: '#2d3748', marginBottom: 10 }}>Creating your comic portrait...</div>
                   <div style={{ fontSize: 13, color: '#718096', lineHeight: 1.8, marginBottom: 24 }}>
-                    GPT-4o is analyzing your appearance, then DALL-E 3 is drawing your comic book truck driver character. This takes about 20–30 seconds.
+                    Proxie AI is analyzing your appearance and creating your comic book truck driver character. This takes about 20–30 seconds.
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
                     {[0, 1, 2].map(i => (
@@ -600,7 +600,7 @@ function PhotoCaptureModal({ user, onPhotoSaved }) {
                   </div>
                   {aiDesc && (
                     <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', fontSize: 11, color: '#718096', marginBottom: 16, lineHeight: 1.7 }}>
-                      <strong style={{ color: '#4a5568' }}>GPT-4o saw: </strong>{aiDesc}
+                      <strong style={{ color: '#4a5568' }}>Proxie AI saw: </strong>{aiDesc}
                     </div>
                   )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
