@@ -65,15 +65,43 @@ function extractMeetingDisplay(scheduledAt, meetingNotes) {
 }
 
 function buildCalendarLink(scheduledAt, meetingNotes) {
-  if (!scheduledAt) return null
+  if (!scheduledAt && !meetingNotes) return null
   try {
-    const start = new Date(scheduledAt)
-    const end   = new Date(start.getTime() + 60 * 60 * 1000)
-    const fmt   = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+    let startMs = null
+
+    // Try to parse time from notes text e.g. "Meeting scheduled: Wednesday, April 1 at 11:00 AM"
+    if (meetingNotes) {
+      const match = meetingNotes.match(/Meeting scheduled:\s*(.+?)(?:\n|$)/i)
+      if (match) {
+        const str = match[1].trim()
+        // Extract time component e.g. "11:00 AM"
+        const timeMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i)
+        // Extract date component e.g. "April 1" or "Apr 1"
+        const dateMatch = str.match(/([A-Za-z]+)\s+(\d{1,2})(?:,?\s*(\d{4}))?/)
+        if (timeMatch && dateMatch) {
+          let hours   = parseInt(timeMatch[1])
+          const mins  = parseInt(timeMatch[2])
+          const ampm  = timeMatch[3].toUpperCase()
+          const month = dateMatch[1]
+          const day   = parseInt(dateMatch[2])
+          const year  = dateMatch[3] ? parseInt(dateMatch[3]) : new Date().getFullYear()
+          if (ampm === 'PM' && hours !== 12) hours += 12
+          if (ampm === 'AM' && hours === 12) hours = 0
+          const d = new Date(year, new Date(`${month} 1`).getMonth(), day, hours, mins)
+          if (!isNaN(d.getTime())) startMs = d.getTime()
+        }
+      }
+    }
+
+    // Fallback to scheduled_at
+    if (!startMs && scheduledAt) startMs = new Date(scheduledAt).getTime()
+    if (!startMs) return null
+
+    const fmt = (ms) => new Date(ms).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
     const params = new URLSearchParams({
       action:  'TEMPLATE',
       text:    'Recruiter Call — ProxieAgent',
-      dates:   `${fmt(start)}/${fmt(end)}`,
+      dates:   `${fmt(startMs)}/${fmt(startMs + 60 * 60 * 1000)}`,
       details: meetingNotes || 'Meeting scheduled by Proxie Agent',
     })
     return `https://calendar.google.com/calendar/render?${params}`
