@@ -445,7 +445,9 @@ CRITICAL — meeting_scheduled detection rules:
         iso = analysis.get("meeting_datetime_iso")
         if iso:
             try:
-                dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+                iso_clean = iso.replace("Z", "").split("+")[0].split("-")[0] if "T" in iso else iso
+                dt = datetime.fromisoformat(iso.replace("Z", ""))
+                dt = dt.replace(tzinfo=None)
                 outreach_updates["scheduled_at"] = dt
                 print(f"[Voice] Meeting scheduled at {dt} for record {outreach_record_id}")
             except Exception as e:

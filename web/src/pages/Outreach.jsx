@@ -50,16 +50,15 @@ function MeetingBadge({ scheduledAt, meetingNotes }) {
 
     const fmtDate = (iso) => {
     try {
-        // Parse without timezone conversion — treat as local
-        const d = new Date(iso + (iso.includes('T') && !iso.includes('Z') && !iso.includes('+') ? '' : ''))
-        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
+        const d = new Date(iso)
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     } catch { return iso }
     }
 
     const fmtTime = (iso) => {
     try {
         const d = new Date(iso)
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     } catch { return '' }
     }
 

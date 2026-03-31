@@ -332,7 +332,8 @@ def schedule_meeting(record_id: str, request: ScheduleRequest, user: dict = Depe
 
     if request.scheduled_at:
         try:
-            dt = datetime.fromisoformat(request.scheduled_at)
+            dt = datetime.fromisoformat(request.scheduled_at.replace("Z", ""))
+            dt = dt.replace(tzinfo=None)  # Store as naive local time
                 # Store as-is without UTC conversion — treat as naive local time
             updates["scheduled_at"] = dt
         except Exception:
