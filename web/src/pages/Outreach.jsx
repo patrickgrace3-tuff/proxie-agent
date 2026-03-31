@@ -48,19 +48,20 @@ function ScoreBar({ score }) {
 function MeetingBadge({ scheduledAt, meetingNotes }) {
   if (!scheduledAt && !meetingNotes) return null
 
-  const fmtDate = (iso) => {
+    const fmtDate = (iso) => {
     try {
-      const d = new Date(iso)
-      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        // Parse without timezone conversion — treat as local
+        const d = new Date(iso + (iso.includes('T') && !iso.includes('Z') && !iso.includes('+') ? '' : ''))
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
     } catch { return iso }
-  }
+    }
 
-  const fmtTime = (iso) => {
+    const fmtTime = (iso) => {
     try {
-      const d = new Date(iso)
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        const d = new Date(iso)
+        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
     } catch { return '' }
-  }
+    }
 
   // Build Google Calendar link
   const calendarLink = scheduledAt ? (() => {
@@ -686,8 +687,8 @@ export default function Outreach() {
                       {(() => {
                         try {
                           const d = new Date(rec.scheduled_at)
-                          return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
-                            ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                          return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Chicago' }) +
+                            ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
                         } catch { return 'Meeting scheduled' }
                       })()}
                     </span>

@@ -332,7 +332,8 @@ def schedule_meeting(record_id: str, request: ScheduleRequest, user: dict = Depe
 
     if request.scheduled_at:
         try:
-            dt = datetime.fromisoformat(request.scheduled_at.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(request.scheduled_at)
+                # Store as-is without UTC conversion — treat as naive local time
             updates["scheduled_at"] = dt
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid datetime. Use ISO 8601 e.g. 2026-04-08T14:00:00")
