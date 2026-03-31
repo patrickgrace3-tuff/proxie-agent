@@ -35,7 +35,6 @@ def get_headers() -> dict:
 
 # ── MySQL helpers ─────────────────────────────────────────────────────────────
 def _db_update_outreach(record_id: str, updates: dict):
-    """Update outreach_log in MySQL."""
     if not updates or not record_id:
         return
     try:
@@ -51,7 +50,6 @@ def _db_update_outreach(record_id: str, updates: dict):
 
 
 def _db_update_call_log(call_id: str, updates: dict):
-    """Update call_log in MySQL."""
     if not updates or not call_id:
         return
     try:
@@ -67,7 +65,6 @@ def _db_update_call_log(call_id: str, updates: dict):
 
 
 def _db_get_call_log(user_id: int) -> list:
-    """Load call log from MySQL for a user."""
     try:
         from db.database import db as db_ctx, row_to_dict
         with db_ctx() as cur:
@@ -95,17 +92,17 @@ def build_call_prompt(profile_data: dict, rules_data: dict, outreach_record: dic
     freight   = ", ".join(outreach_record.get("freight_types") or [])
     location  = outreach_record.get("location", "")
 
-    exp          = profile_data.get("cdl_experience", "")
-    licenses     = ", ".join(profile_data.get("licenses_held") or [])
-    endorsements = ", ".join(profile_data.get("endorsements") or [])
+    exp            = profile_data.get("cdl_experience", "")
+    licenses       = ", ".join(profile_data.get("licenses_held") or [])
+    endorsements   = ", ".join(profile_data.get("endorsements") or [])
     driver_freight = ", ".join(profile_data.get("freight_current") or [])
-    driver_type  = profile_data.get("driver_type", "")
-    solo_team    = profile_data.get("solo_or_team", "")
-    zip_code     = profile_data.get("zip_code", "")
-    military     = profile_data.get("military_service", "")
-    violations   = profile_data.get("moving_violations", "No")
-    accidents    = profile_data.get("preventable_accidents", "No")
-    career_goals = profile_data.get("career_goals", "")
+    driver_type    = profile_data.get("driver_type", "")
+    solo_team      = profile_data.get("solo_or_team", "")
+    zip_code       = profile_data.get("zip_code", "")
+    military       = profile_data.get("military_service", "")
+    violations     = profile_data.get("moving_violations", "No")
+    accidents      = profile_data.get("preventable_accidents", "No")
+    career_goals   = profile_data.get("career_goals", "")
 
     min_cpm      = rules_data.get("min_cpm")
     home_req     = rules_data.get("home_time_requirement", "")
@@ -157,12 +154,15 @@ def build_call_prompt(profile_data: dict, rules_data: dict, outreach_record: dic
 2. **Qualify**: Confirm the position is open. Ask about current CPM, home time, and freight type.
 3. **Pitch**: Share {name}'s top qualifications that match this role. Highlight experience and clean record.
 4. **Handle objections**: If pay is below minimum, say "{name} is currently looking for {f'{min_cpm}¢/mile minimum' if min_cpm else 'competitive pay'} — is there any flexibility?"
-5. **Close**: If it's a fit, get recruiter's name and direct number. Offer to have {name} call them directly.
-6. **Voicemail**: Leave a brief professional message with {name}'s name, experience summary, and ask for a callback.
+5. **Schedule**: If there is interest, schedule a specific time for the recruiter to speak directly with {name}. Say "Can we schedule a call for {name} to speak with you directly? What day and time works best?" Then CONFIRM the exact day and time by repeating it back: "Great, so we have {name} confirmed for [day] at [time] — is that correct?"
+6. **Close**: Get recruiter's name and direct number. Confirm the scheduled meeting time before hanging up.
+7. **Voicemail**: Leave a brief professional message with {name}'s name, experience summary, and ask for a callback.
 
 ## Hard Rules
 - Never invent qualifications not listed above
 - If asked something you don't know, say "I'd need to confirm that with {name} directly"
+- ALWAYS try to schedule a specific meeting time when the recruiter shows interest — do not end the call without a confirmed time
+- Repeat the confirmed day and time back to the recruiter before hanging up
 - Always get the recruiter's name and direct number before hanging up
 - Keep the call under 3 minutes unless the recruiter is engaged
 - If they say the position is filled, ask: "Do you have any similar openings coming up that might be a good fit for {name}?"
@@ -188,7 +188,6 @@ async def dispatch_call(
     if rules_data is None:
         rules_data = load_rules().model_dump()
 
-    # Parse JSON list fields from MySQL
     for f in ["licenses_held","licenses_obtaining","endorsements","freight_current","freight_interested"]:
         if isinstance(profile_data.get(f), str):
             try: profile_data[f] = json.loads(profile_data[f])
@@ -207,8 +206,8 @@ async def dispatch_call(
         "task": prompt,
         "model": "enhanced",
         "language": "en",
-        "voice": voice,       # Some Bland API versions use this
-        "voice_id": voice,    # Others use this
+        "voice": voice,
+        "voice_id": voice,
         "voice_settings": {"stability": 0.65, "similarity_boost": 0.8, "speed": 0.95},
         "max_duration": max_duration,
         "answered_by_enabled": True,
@@ -238,7 +237,6 @@ async def dispatch_call(
 
     call_id = result.get("call_id", "")
 
-    # Write to MySQL call_log
     try:
         from db.database import db as db_ctx
         with db_ctx() as cur:
@@ -253,7 +251,6 @@ async def dispatch_call(
     except Exception as e:
         print(f"[Voice] MySQL call_log write failed: {e}")
 
-    # Update outreach record
     _db_update_outreach(outreach_record_id, {
         "status": "contacted",
         "channel": "voice",
@@ -264,7 +261,7 @@ async def dispatch_call(
     return {"success": True, "call_id": call_id, "status": "dispatched"}
 
 
-# ── Fetch call from Bland AI (transcript + recording) ─────────────────────────
+# ── Fetch call from Bland AI ──────────────────────────────────────────────────
 async def get_call_status(call_id: str) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(f"{BLAND_API_BASE}/calls/{call_id}", headers=get_headers())
@@ -273,31 +270,23 @@ async def get_call_status(call_id: str) -> dict:
 
 
 async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
-    """Fetch transcript + recording from Bland AI, analyze with Claude, save everything."""
     data = await get_call_status(call_id)
 
     print(f"[Voice] Bland AI response keys: {list(data.keys())}")
     print(f"[Voice] status={data.get('status')} answered_by={data.get('answered_by')} length={data.get('call_length')}")
 
-    # Transcript — Bland AI uses concatenated_transcript
     transcript = data.get("concatenated_transcript") or ""
     if not transcript and data.get("transcripts"):
         parts = data["transcripts"]
         if isinstance(parts, list):
             transcript = " ".join(t.get("text", "") for t in parts if isinstance(t, dict))
 
-    # Bland AI summary (their own AI summary)
     bland_summary = data.get("summary") or ""
+    raw_length    = data.get("call_length") or data.get("corrected_duration") or 0
+    duration      = int(float(raw_length) * 60) if raw_length else 0
 
-    # Duration — call_length can be float (minutes), convert to seconds
-    raw_length = data.get("call_length") or data.get("corrected_duration") or 0
-    duration = int(float(raw_length) * 60) if raw_length else 0
-
-    # Recording — Bland returns recording_url as a URL string OR True if recording exists
-    # Need to fetch the actual URL separately if it's just True
     recording_url = data.get("recording_url")
     if recording_url is True or recording_url == "true":
-        # Fetch actual recording URL from Bland
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 rec_resp = await client.get(
@@ -318,7 +307,7 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
     answered_by = data.get("answered_by") or ""
     status      = data.get("status") or ""
 
-    print(f"[Voice] transcript_len={len(transcript)} recording_url={recording_url[:40] if recording_url else 'none'} duration={duration}s bland_summary={bool(bland_summary)}")
+    print(f"[Voice] transcript_len={len(transcript)} recording_url={recording_url[:40] if recording_url else 'none'} duration={duration}s")
 
     result = {
         "transcript":    transcript,
@@ -329,7 +318,6 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
         "bland_summary": bland_summary,
     }
 
-    # Update call_log in MySQL
     _db_update_call_log(call_id, {
         "duration_seconds": duration,
         "transcript":       transcript[:5000] if transcript else "",
@@ -337,8 +325,6 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
         "status":           "completed" if status in ("completed","ended") else (status or "dispatched"),
     })
 
-    # Save to outreach record — only columns that exist
-    outreach_updates = {"call_duration_seconds": duration}
     if recording_url:
         try:
             _db_update_outreach(outreach_record_id, {"recording_url": recording_url, "call_duration_seconds": duration})
@@ -347,15 +333,12 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
     else:
         _db_update_outreach(outreach_record_id, {"call_duration_seconds": duration})
 
-    # Run Claude analysis on transcript, or use Bland's own summary
     if transcript and len(transcript.strip()) > 30:
         analysis = await analyze_call_transcript(call_id, outreach_record_id, transcript)
         result.update(analysis)
-        # Also store Bland's summary alongside Claude's
         if bland_summary and not result.get("summary"):
             result["summary"] = bland_summary
     elif bland_summary:
-        # Use Bland's summary if no transcript for Claude
         result["summary"] = bland_summary
         result["outcome"] = answered_by if answered_by else "completed"
         _db_update_outreach(outreach_record_id, {
@@ -384,58 +367,107 @@ async def analyze_call_transcript(call_id: str, outreach_record_id: str, transcr
 
     message = get_claude_client().messages.create(
         model="claude-opus-4-5",
-        max_tokens=800,
+        max_tokens=1000,
         system="""You analyze CDL trucking recruiter call transcripts.
 Return ONLY a JSON object — no markdown, no extra text:
 {
-  "outcome": "interested|callback_scheduled|not_interested|voicemail|no_answer",
+  "outcome": "interested|callback_scheduled|meeting_scheduled|not_interested|voicemail|no_answer",
   "recruiter_name": "name or empty string",
   "callback_number": "phone or empty string",
   "callback_time": "time/date or empty string",
+  "meeting_scheduled": false,
+  "meeting_datetime": null,
+  "meeting_datetime_iso": null,
+  "meeting_notes": "any details about the meeting or empty string",
   "offered_cpm": null or number,
   "offered_weekly": null or number,
   "home_time_mentioned": "what they said or empty string",
   "summary": "2-3 sentence plain English summary of the full call",
   "follow_up_action": "specific next step the driver should take"
-}""",
-        messages=[{"role": "user", "content": f"Transcript:\n\n{transcript[:4000]}"}]
+}
+
+CRITICAL — meeting_scheduled detection rules:
+- Set meeting_scheduled TRUE only when a SPECIFIC day AND time were explicitly agreed upon
+- Examples that ARE scheduled: "Let's talk Tuesday at 2pm", "How about Thursday at 10am?", "I can call Friday at 3:30"
+- Examples that are NOT scheduled: "call us back sometime", "we'll be in touch", "maybe next week"
+- When meeting_scheduled is true, set outcome to "meeting_scheduled"
+- Set meeting_datetime to human readable e.g. "Tuesday, April 8 at 2:00 PM"
+- Set meeting_datetime_iso to ISO 8601 e.g. "2026-04-08T14:00:00" if determinable, else null
+""",
+        messages=[{
+            "role": "user",
+            "content": f"Today's date: {datetime.now().strftime('%A, %B %d, %Y')}\n\nTranscript:\n\n{transcript[:4000]}"
+        }]
     )
 
     raw = message.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     try:
         analysis = json.loads(raw)
     except:
-        analysis = {"outcome": "unknown", "summary": raw[:400], "recruiter_name": "", "callback_number": ""}
+        analysis = {
+            "outcome": "unknown", "summary": raw[:400],
+            "recruiter_name": "", "callback_number": "",
+            "meeting_scheduled": False, "meeting_datetime": None,
+            "meeting_datetime_iso": None, "meeting_notes": "",
+        }
 
     outcome_map = {
-        "interested": "interested", "callback_scheduled": "callback",
-        "not_interested": "rejected", "voicemail": "contacted", "no_answer": "contacted",
+        "interested":        "interested",
+        "meeting_scheduled": "scheduled",
+        "callback_scheduled":"callback",
+        "not_interested":    "rejected",
+        "voicemail":         "contacted",
+        "no_answer":         "contacted",
     }
     status = outcome_map.get(analysis.get("outcome", ""), "contacted")
 
     outreach_updates = {
-        "status": status,
-        "call_summary": analysis.get("summary", ""),
+        "status":        status,
+        "call_summary":  analysis.get("summary", ""),
         "outcome_notes": analysis.get("summary", ""),
     }
-    if analysis.get("recruiter_name"): outreach_updates["recruiter_name"] = analysis["recruiter_name"]
+
+    if analysis.get("recruiter_name"):  outreach_updates["recruiter_name"]  = analysis["recruiter_name"]
     if analysis.get("callback_number"): outreach_updates["recruiter_phone"] = analysis["callback_number"]
-    if analysis.get("offered_cpm"):    outreach_updates["offer_cpm"] = analysis["offered_cpm"]
-    if analysis.get("offered_weekly"): outreach_updates["offer_weekly"] = analysis["offered_weekly"]
-    if analysis.get("callback_time"):  outreach_updates["follow_up_date"] = analysis["callback_time"]
+    if analysis.get("offered_cpm"):     outreach_updates["offer_cpm"]       = analysis["offered_cpm"]
+    if analysis.get("offered_weekly"):  outreach_updates["offer_weekly"]     = analysis["offered_weekly"]
+    if analysis.get("callback_time"):   outreach_updates["follow_up_date"]  = analysis["callback_time"]
+
+    # ── Meeting scheduling ────────────────────────────────────────────────────
+    if analysis.get("meeting_scheduled"):
+        meeting_notes = analysis.get("meeting_notes", "") or ""
+        if analysis.get("meeting_datetime"):
+            prefix = f"Meeting scheduled: {analysis['meeting_datetime']}"
+            meeting_notes = prefix + (f"\n{meeting_notes}" if meeting_notes else "")
+
+        outreach_updates["meeting_notes"] = meeting_notes
+
+        iso = analysis.get("meeting_datetime_iso")
+        if iso:
+            try:
+                dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+                outreach_updates["scheduled_at"] = dt
+                print(f"[Voice] Meeting scheduled at {dt} for record {outreach_record_id}")
+            except Exception as e:
+                print(f"[Voice] Could not parse ISO '{iso}': {e}")
+                outreach_updates["scheduled_at"] = None
+        else:
+            outreach_updates["scheduled_at"] = None
+
+        print(f"[Voice] Meeting detected — status=scheduled notes='{meeting_notes}'")
 
     _db_update_outreach(outreach_record_id, outreach_updates)
     _db_update_call_log(call_id, {
-        "outcome": analysis.get("outcome", ""),
-        "summary": analysis.get("summary", ""),
+        "outcome":        analysis.get("outcome", ""),
+        "summary":        analysis.get("summary", ""),
         "recruiter_name": analysis.get("recruiter_name", ""),
-        "status": "completed",
+        "status":         "completed",
     })
 
     return analysis
 
 
-# ── Legacy JSON call log (kept for backward compat) ───────────────────────────
+# ── Legacy JSON call log ──────────────────────────────────────────────────────
 def _load_call_log() -> list:
     if CALL_LOG_PATH.exists():
         try: return json.loads(CALL_LOG_PATH.read_text())

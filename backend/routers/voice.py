@@ -20,7 +20,6 @@ router = APIRouter()
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def get_outreach_record(record_id: str, user_id: int) -> dict:
-    """Fetch a single outreach record from MySQL, scoped to user."""
     with db() as cur:
         cur.execute(
             "SELECT * FROM outreach_log WHERE id = %s AND user_id = %s",
@@ -40,7 +39,6 @@ def get_outreach_record(record_id: str, user_id: int) -> dict:
 
 
 def update_outreach_record(record_id: str, user_id: int, updates: dict):
-    """Update fields on an outreach record."""
     if not updates:
         return
     set_clause = ", ".join(f"{k} = %s" for k in updates)
@@ -95,6 +93,11 @@ class TestCallRequest(BaseModel):
     test_phone: str
 
 
+class ScheduleRequest(BaseModel):
+    scheduled_at: Optional[str] = None   # ISO datetime string
+    meeting_notes: Optional[str] = ""
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/config")
@@ -128,13 +131,11 @@ async def dispatch_voice_call(request: CallRequest, user: dict = Depends(get_cur
     if not request.recruiter_phone:
         raise HTTPException(status_code=400, detail="Recruiter phone number required.")
 
-    # Save phone and mark as voice channel
     update_outreach_record(request.outreach_record_id, user_id, {
         "recruiter_phone": request.recruiter_phone,
         "channel": "voice",
     })
 
-    # Load user's profile and rules from MySQL
     profile = get_user_profile(user_id)
     rules   = get_user_rules(user_id)
 
@@ -199,23 +200,21 @@ async def call_status(call_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/webhook")
 async def bland_webhook(request: Request):
-    """Bland AI webhook — called when a call ends."""
     try:
         payload = await request.json()
     except Exception:
         return JSONResponse({"ok": False}, status_code=400)
 
-    call_id    = payload.get("call_id", "")
-    status     = payload.get("status", "")
-    transcript = payload.get("concatenated_transcript", "") or payload.get("transcript", "")
-    duration   = payload.get("call_length", 0)
+    call_id     = payload.get("call_id", "")
+    status      = payload.get("status", "")
+    transcript  = payload.get("concatenated_transcript", "") or payload.get("transcript", "")
+    duration    = payload.get("call_length", 0)
     answered_by = payload.get("answered_by", "")
-    metadata   = payload.get("metadata") or {}
+    metadata    = payload.get("metadata") or {}
 
     outreach_record_id = metadata.get("outreach_record_id", "")
     user_id = int(metadata.get("user_id", 0))
 
-    # Fallback: look up from call log
     if not outreach_record_id:
         log = load_call_log()
         entry = next((e for e in log if e.get("call_id") == call_id), None)
@@ -254,41 +253,38 @@ async def get_transcript(call_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Bland AI not configured.")
     data = await get_call_status(call_id)
     return {
-        "call_id":     call_id,
-        "transcript":  data.get("concatenated_transcript", ""),
-        "status":      data.get("status", ""),
-        "duration":    data.get("call_length", 0),
-        "answered_by": data.get("answered_by", ""),
+        "call_id":       call_id,
+        "transcript":    data.get("concatenated_transcript", ""),
+        "status":        data.get("status", ""),
+        "duration":      data.get("call_length", 0),
+        "answered_by":   data.get("answered_by", ""),
         "recording_url": data.get("recording_url", ""),
     }
 
 
 @router.get("/debug/{call_id}")
 async def debug_call(call_id: str, user: dict = Depends(get_current_user)):
-    """Debug: show raw Bland AI response for a call."""
     if not voice_module.BLAND_API_KEY:
         raise HTTPException(status_code=400, detail="Bland AI not configured.")
     data = await get_call_status(call_id)
     return {
-        "bland_keys": list(data.keys()),
-        "status": data.get("status"),
-        "answered_by": data.get("answered_by"),
-        "call_length": data.get("call_length"),
-        "recording_url": data.get("recording_url"),
+        "bland_keys":     list(data.keys()),
+        "status":         data.get("status"),
+        "answered_by":    data.get("answered_by"),
+        "call_length":    data.get("call_length"),
+        "recording_url":  data.get("recording_url"),
         "transcript_len": len(data.get("concatenated_transcript") or ""),
-        "raw": data,
+        "raw":            data,
     }
 
 
 @router.post("/call-log/{call_id}/analyze")
 async def analyze_call(call_id: str, user: dict = Depends(get_current_user)):
-    """Manually trigger analysis — fetches transcript + recording from Bland AI."""
     if not voice_module.BLAND_API_KEY:
         raise HTTPException(status_code=400, detail="Bland AI not configured.")
     from agent.voice import fetch_and_analyze
     user_id = int(user["sub"])
 
-    # Look up outreach_record_id from call_log table
     outreach_record_id = None
     with db() as cur:
         cur.execute("SELECT outreach_record_id FROM call_log WHERE call_id = %s AND user_id = %s",
@@ -297,7 +293,6 @@ async def analyze_call(call_id: str, user: dict = Depends(get_current_user)):
         if row:
             outreach_record_id = row.get("outreach_record_id") or list(row.values())[0]
 
-    # If not in call_log, try finding it from outreach_log outcome_notes
     if not outreach_record_id:
         with db() as cur:
             cur.execute(
@@ -307,7 +302,6 @@ async def analyze_call(call_id: str, user: dict = Depends(get_current_user)):
             row = cur.fetchone()
             if row:
                 outreach_record_id = row.get("id") or list(row.values())[0]
-                # Insert missing call_log entry
                 with db() as cur2:
                     cur2.execute("""
                         INSERT IGNORE INTO call_log (user_id, call_id, outreach_record_id, status)
@@ -315,16 +309,59 @@ async def analyze_call(call_id: str, user: dict = Depends(get_current_user)):
                     """, (user_id, call_id, outreach_record_id))
 
     if not outreach_record_id:
-        raise HTTPException(status_code=404, detail=f"Call {call_id} not found. Make sure it was dispatched from this account.")
+        raise HTTPException(status_code=404, detail=f"Call {call_id} not found.")
 
     result = await fetch_and_analyze(call_id, outreach_record_id)
     return result
 
 
+# ── Schedule meeting ──────────────────────────────────────────────────────────
+
+@router.post("/schedule/{record_id}")
+def schedule_meeting(record_id: str, request: ScheduleRequest, user: dict = Depends(get_current_user)):
+    """Set or update a scheduled meeting time. Moves status to 'scheduled'."""
+    user_id = int(user["sub"])
+    record = get_outreach_record(record_id, user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Outreach record not found.")
+
+    updates = {
+        "status":        "scheduled",
+        "meeting_notes": request.meeting_notes or "",
+    }
+
+    if request.scheduled_at:
+        try:
+            dt = datetime.fromisoformat(request.scheduled_at.replace("Z", "+00:00"))
+            updates["scheduled_at"] = dt
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid datetime. Use ISO 8601 e.g. 2026-04-08T14:00:00")
+
+    update_outreach_record(record_id, user_id, updates)
+    return {"success": True, "scheduled_at": request.scheduled_at, "meeting_notes": request.meeting_notes}
+
+
+@router.delete("/schedule/{record_id}")
+def clear_meeting(record_id: str, user: dict = Depends(get_current_user)):
+    """Clear a scheduled meeting and move status back to interested."""
+    user_id = int(user["sub"])
+    record = get_outreach_record(record_id, user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Outreach record not found.")
+
+    update_outreach_record(record_id, user_id, {
+        "status":        "interested",
+        "scheduled_at":  None,
+        "meeting_notes": "",
+    })
+    return {"success": True}
+
+
+# ── Number lookup ─────────────────────────────────────────────────────────────
+
 @router.get("/lookup-numbers")
 async def lookup_numbers(force_refresh: bool = False, user: dict = Depends(get_current_user)):
     user_id = int(user["sub"])
-    # Get user's outreach records that have no phone
     with db() as cur:
         cur.execute(
             "SELECT * FROM outreach_log WHERE user_id = %s AND (recruiter_phone IS NULL OR recruiter_phone = '')",
@@ -336,7 +373,6 @@ async def lookup_numbers(force_refresh: bool = False, user: dict = Depends(get_c
         return {"message": "All records have phone numbers.", "updated": 0}
     results = await lookup_recruiting_numbers(force_refresh=force_refresh)
     updated = 0
-    # results is a dict keyed by carrier_name
     if isinstance(results, dict):
         for carrier_name, info in results.items():
             if not isinstance(info, dict):
@@ -344,7 +380,6 @@ async def lookup_numbers(force_refresh: bool = False, user: dict = Depends(get_c
             phone = info.get("recruiter_phone") or info.get("phone")
             if not phone:
                 continue
-            # Find matching outreach records by carrier name
             for c in carriers:
                 if c.get("carrier_name", "").lower() == carrier_name.lower():
                     update_outreach_record(c["id"], user_id, {"recruiter_phone": phone})

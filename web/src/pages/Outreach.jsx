@@ -7,12 +7,13 @@ const STATUS_COLORS = {
   contacted:  { bg: '#805ad522', color: '#805ad5', border: '#805ad544', label: 'Contacted' },
   callback:   { bg: '#dd6b2022', color: '#dd6b20', border: '#dd6b2044', label: 'Callback' },
   interested: { bg: '#38a16922', color: '#38a169', border: '#38a16944', label: 'Interested' },
+  scheduled:  { bg: '#534AB722', color: '#534AB7', border: '#534AB744', label: 'Scheduled' },
   rejected:   { bg: '#e53e3e22', color: '#e53e3e', border: '#e53e3e44', label: 'Rejected' },
   hired:      { bg: '#00897b22', color: '#00897b', border: '#00897b44', label: 'Offer' },
   passed:     { bg: '#a0aec022', color: '#a0aec0', border: '#a0aec044', label: 'Passed' },
 }
 
-const STATUS_TABS = ['all', 'pending', 'approved', 'contacted', 'callback', 'interested', 'rejected', 'hired']
+const STATUS_TABS = ['all', 'pending', 'approved', 'contacted', 'callback', 'interested', 'scheduled', 'rejected', 'hired']
 
 const SAFETY_STATUS = {
   OK:      { bg: '#f0fff4', color: '#276749', border: '#9ae6b4', icon: '✅', label: 'Safety Rating OK' },
@@ -43,6 +44,149 @@ function ScoreBar({ score }) {
   )
 }
 
+// ── Meeting Badge ─────────────────────────────────────────────────────────────
+function MeetingBadge({ scheduledAt, meetingNotes }) {
+  if (!scheduledAt && !meetingNotes) return null
+
+  const fmtDate = (iso) => {
+    try {
+      const d = new Date(iso)
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    } catch { return iso }
+  }
+
+  const fmtTime = (iso) => {
+    try {
+      const d = new Date(iso)
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    } catch { return '' }
+  }
+
+  // Build Google Calendar link
+  const calendarLink = scheduledAt ? (() => {
+    try {
+      const start = new Date(scheduledAt)
+      const end   = new Date(start.getTime() + 60 * 60 * 1000) // +1 hour
+      const fmt   = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: 'Recruiter Call — ProxieAgent',
+        dates: `${fmt(start)}/${fmt(end)}`,
+        details: meetingNotes || 'Meeting scheduled by Proxie Agent',
+      })
+      return `https://calendar.google.com/calendar/render?${params}`
+    } catch { return null }
+  })() : null
+
+  return (
+    <div style={{ background: '#EEEDFE', border: '1px solid #AFA9EC', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+            📅 Meeting Scheduled
+          </div>
+          {scheduledAt && (
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#26215C' }}>
+              {fmtDate(scheduledAt)}{fmtTime(scheduledAt) ? ` · ${fmtTime(scheduledAt)}` : ''}
+            </div>
+          )}
+          {meetingNotes && (
+            <div style={{ fontSize: 11, color: '#534AB7', marginTop: 3, lineHeight: 1.5 }}>{meetingNotes}</div>
+          )}
+        </div>
+        {calendarLink && (
+          <a href={calendarLink} target="_blank" rel="noreferrer" style={{
+            padding: '6px 10px', background: '#534AB7', color: 'white',
+            borderRadius: 7, fontSize: 11, fontWeight: 600, textDecoration: 'none',
+            whiteSpace: 'nowrap', flexShrink: 0
+          }}>+ Calendar</a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Schedule Modal ────────────────────────────────────────────────────────────
+function ScheduleModal({ rec, onClose, onSaved }) {
+  const [datetime, setDatetime] = useState(
+    rec.scheduled_at ? new Date(rec.scheduled_at).toISOString().slice(0, 16) : ''
+  )
+  const [notes, setNotes] = useState(rec.meeting_notes || '')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await client.post(`/api/voice/schedule/${rec.id}`, {
+        scheduled_at: datetime ? new Date(datetime).toISOString() : null,
+        meeting_notes: notes,
+      })
+      onSaved()
+      onClose()
+    } catch (e) {
+      alert('Failed to save: ' + (e?.response?.data?.detail || e.message))
+    } finally { setSaving(false) }
+  }
+
+  const clear = async () => {
+    if (!confirm('Clear this scheduled meeting?')) return
+    setSaving(true)
+    try {
+      await client.delete(`/api/voice/schedule/${rec.id}`)
+      onSaved()
+      onClose()
+    } catch (e) {
+      alert('Failed: ' + (e?.response?.data?.detail || e.message))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 500, padding: '20px 20px 40px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📅 Schedule Meeting</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12, color: '#718096', marginBottom: 16 }}>
+          Set the date and time agreed on with the recruiter at <strong>{rec.carrier_name}</strong>.
+        </div>
+
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#718096', marginBottom: 6 }}>Date & Time</label>
+        <input
+          type="datetime-local"
+          value={datetime}
+          onChange={e => setDatetime(e.target.value)}
+          style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, outline: 'none', marginBottom: 14, fontFamily: 'inherit', boxSizing: 'border-box' }}
+        />
+
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#718096', marginBottom: 6 }}>Notes (optional)</label>
+        <textarea
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="e.g. Confirm with Sarah at ext 204, call their main line first"
+          rows={3}
+          style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', marginBottom: 20, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+        />
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          {rec.scheduled_at && (
+            <button onClick={clear} disabled={saving} style={{
+              padding: '13px 14px', background: 'white', color: '#e53e3e',
+              border: '1px solid #fed7d7', borderRadius: 12, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit'
+            }}>Clear</button>
+          )}
+          <button onClick={onClose} style={{ flex: 1, padding: '13px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 12, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{
+            flex: 2, padding: '13px', background: '#534AB7', color: 'white', border: 'none',
+            borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1, fontFamily: 'inherit',
+            boxShadow: '0 4px 14px rgba(83,74,183,0.3)'
+          }}>{saving ? 'Saving...' : '📅 Save Meeting'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── FMCSA Bottom Sheet ────────────────────────────────────────────────────────
 function FmcsaSheet({ data, carrierName, onClose }) {
   const ss = SAFETY_STATUS[data?.safety_status] || SAFETY_STATUS.UNKNOWN
@@ -64,8 +208,6 @@ function FmcsaSheet({ data, carrierName, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
-
-        {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <div>
@@ -74,8 +216,6 @@ function FmcsaSheet({ data, carrierName, onClose }) {
             </div>
             <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0', lineHeight: 1, padding: 0 }}>✕</button>
           </div>
-
-          {/* Safety banner */}
           <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: ss.bg, border: `1px solid ${ss.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 22 }}>{ss.icon}</span>
             <div>
@@ -88,19 +228,13 @@ function FmcsaSheet({ data, carrierName, onClose }) {
             </div>
           </div>
         </div>
-
-        {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 24px' }}>
-
-          {/* Fleet stats */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
             {stat('Drivers', data?.total_drivers ?? data?.fleet_drivers)}
             {stat('Power Units', data?.power_units)}
             {stat('Fatal Crashes', data?.crashes_fatal, data?.crashes_fatal > 0)}
             {stat('Injury Crashes', data?.crashes_injury, data?.crashes_injury > 5)}
           </div>
-
-          {/* OOS Rates */}
           {(data?.driver_oos_rate != null || data?.vehicle_oos_rate != null) && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Out-of-Service Rates</div>
@@ -112,8 +246,6 @@ function FmcsaSheet({ data, carrierName, onClose }) {
               <div style={{ fontSize: 10, color: '#a0aec0', marginTop: 6 }}>National avg: Driver 5.5% · Vehicle 20.8%</div>
             </div>
           )}
-
-          {/* Authority */}
           {(data?.common_authority || data?.contract_authority) && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Operating Authority</div>
@@ -133,8 +265,6 @@ function FmcsaSheet({ data, carrierName, onClose }) {
               </div>
             </div>
           )}
-
-          {/* Cargo & operations */}
           {(data?.cargo_carried?.length > 0 || data?.operation_classes?.length > 0) && (
             <div style={{ marginBottom: 16 }}>
               {data?.operation_classes?.length > 0 && (
@@ -155,8 +285,6 @@ function FmcsaSheet({ data, carrierName, onClose }) {
               )}
             </div>
           )}
-
-          {/* Warnings */}
           {data?.warnings?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#e53e3e', marginBottom: 8 }}>⚠ Flags & Warnings</div>
@@ -167,29 +295,21 @@ function FmcsaSheet({ data, carrierName, onClose }) {
               ))}
             </div>
           )}
-
-          {/* Address / contact */}
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Details</div>
           {row('Address', data?.address)}
           {row('Phone', data?.phone)}
           {row('Email', data?.email)}
           {row('Crash total (24mo)', data?.crash_total != null ? `${data.crash_total} crashes` : null)}
           {row('Complaint count', data?.complaint_count > 0 ? data.complaint_count : null)}
-
-          {/* FMCSA link */}
           {data?.dot_number && (
-            <a href={`https://safer.fmcsa.dot.gov/CompanySnapshot.aspx`} target="_blank" rel="noreferrer"
+            <a href="https://safer.fmcsa.dot.gov/CompanySnapshot.aspx" target="_blank" rel="noreferrer"
               style={{ display: 'block', marginTop: 14, textAlign: 'center', fontSize: 12, color: '#3182ce', textDecoration: 'none' }}>
               View full record on FMCSA SAFER ↗
             </a>
           )}
         </div>
-
-        {/* Close button */}
         <div style={{ padding: '12px 20px 28px', borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
-          <button onClick={onClose} style={{ width: '100%', padding: '13px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 12, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Close
-          </button>
+          <button onClick={onClose} style={{ width: '100%', padding: '13px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 12, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Close</button>
         </div>
       </div>
     </div>
@@ -197,7 +317,7 @@ function FmcsaSheet({ data, carrierName, onClose }) {
 }
 
 // ── Action Buttons ────────────────────────────────────────────────────────────
-function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }) {
+function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete, onSchedule }) {
   const pill = (label, onClick, bg, color, border = 'transparent') => (
     <button onClick={onClick} style={{
       padding: '9px 10px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
@@ -206,20 +326,17 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }
     }}>{label}</button>
   )
 
-  // Direct dial button — opens native phone app, no agent dispatch
   const dialBtn = (label = '📞 Call Directly') => (
     rec.recruiter_phone
       ? <a href={`tel:${rec.recruiter_phone}`} style={{
           flex: 1, padding: '9px 10px', minHeight: 40,
-          background: '#2d3748', color: 'white',
-          border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          cursor: 'pointer', textDecoration: 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
+          background: '#2d3748', color: 'white', border: 'none',
+          borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
         }}>{label}</a>
       : <button disabled style={{
-          flex: 1, padding: '9px 10px', minHeight: 40,
-          background: '#e2e8f0', color: '#a0aec0',
-          border: 'none', borderRadius: 8, fontSize: 13, cursor: 'not-allowed'
+          flex: 1, padding: '9px 10px', minHeight: 40, background: '#e2e8f0',
+          color: '#a0aec0', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'not-allowed'
         }}>No phone on file</button>
   )
 
@@ -237,7 +354,6 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }
 
       {rec.status === 'approved' && (
         <div style={{ display: 'flex', gap: 8 }}>
-          {/* Agent dispatch — first contact */}
           <button onClick={() => onCall(rec)} style={{
             flex: 1, padding: '9px 10px', minHeight: 40,
             background: rec.recruiter_phone ? '#38a169' : '#e2e8f0',
@@ -255,7 +371,6 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }
           {pill('🕐 Callback', () => onUpdate(rec.id, 'callback'), '#fffbeb', '#92400e', '#fcd34d')}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {/* Direct dial — agent already called */}
           {dialBtn('📞 Call Recruiter')}
           {pill('✕ Not a Fit', () => onUpdate(rec.id, 'rejected'), 'white', '#e53e3e', '#fed7d7')}
         </div>
@@ -264,7 +379,6 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }
       {rec.status === 'callback' && (<>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.4px' }}>⏰ Follow up needed</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {/* Direct dial for callback */}
           {dialBtn('📞 Call Back')}
           {pill('👍 Interested', () => onUpdate(rec.id, 'interested'), 'white', '#276749', '#9ae6b4')}
         </div>
@@ -278,8 +392,34 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete }
           background: '#38a169', color: 'white', border: 'none',
           borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer'
         }}>🎉 Got an Offer!</button>
-        {/* Direct dial to negotiate */}
-        {dialBtn('📞 Negotiate')}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {dialBtn('📞 Negotiate')}
+          <button onClick={onSchedule} style={{
+            flex: 1, padding: '9px 10px', minHeight: 40,
+            background: '#EEEDFE', color: '#534AB7',
+            border: '1px solid #AFA9EC', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer'
+          }}>📅 Schedule</button>
+        </div>
+      </>)}
+
+      {rec.status === 'scheduled' && (<>
+        {/* Meeting badge shown above action buttons */}
+        <MeetingBadge scheduledAt={rec.scheduled_at} meetingNotes={rec.meeting_notes} />
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px' }}>📅 Meeting confirmed</div>
+        <button onClick={() => onUpdate(rec.id, 'hired')} style={{
+          width: '100%', padding: '11px', minHeight: 44,
+          background: '#38a169', color: 'white', border: 'none',
+          borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer'
+        }}>🎉 Got an Offer!</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {dialBtn('📞 Call Recruiter')}
+          <button onClick={onSchedule} style={{
+            flex: 1, padding: '9px 10px', minHeight: 40,
+            background: '#EEEDFE', color: '#534AB7',
+            border: '1px solid #AFA9EC', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer'
+          }}>✏️ Edit</button>
+        </div>
+        {pill('✕ Not a Fit', () => onUpdate(rec.id, 'rejected'), 'white', '#e53e3e', '#fed7d7')}
       </>)}
 
       {rec.status === 'hired' && (
@@ -361,11 +501,12 @@ export default function Outreach() {
   const [activeTab, setActiveTab] = useState('all')
   const [search, setSearch] = useState('')
   const [callRec, setCallRec] = useState(null)
+  const [scheduleRec, setScheduleRec] = useState(null)
   const [toast, setToast] = useState('')
-  const [toastType, setToastType] = useState('') // '' | 'error'
+  const [toastType, setToastType] = useState('')
   const [expanded, setExpanded] = useState(null)
-  const [fmcsaSheet, setFmcsaSheet] = useState(null) // { data, carrierName }
-  const [fmcsaLoading, setFmcsaLoading] = useState(null) // record id being checked
+  const [fmcsaSheet, setFmcsaSheet] = useState(null)
+  const [fmcsaLoading, setFmcsaLoading] = useState(null)
 
   const showToast = (msg, type = '') => {
     setToast(msg); setToastType(type)
@@ -406,7 +547,6 @@ export default function Outreach() {
     try {
       const r = await client.post(`/api/fmcsa/enrich/${id}`)
       const d = r.data
-      // Parse fmcsa_data if it came back as a string
       let fmcsaData = d
       if (d?.fmcsa_data) {
         fmcsaData = typeof d.fmcsa_data === 'string' ? JSON.parse(d.fmcsa_data) : d.fmcsa_data
@@ -416,9 +556,7 @@ export default function Outreach() {
         setFmcsaLoading(null)
         return
       }
-      // Reload records so the record now has fmcsa_data set
       await load()
-      // Show the sheet with the fresh data
       setFmcsaSheet({ data: fmcsaData, carrierName: name })
       setToast('')
     } catch (e) {
@@ -441,8 +579,7 @@ export default function Outreach() {
     setExpanded(next)
     if (next) {
       setTimeout(() => {
-        document.getElementById(`card-${next}`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        document.getElementById(`card-${next}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
     }
   }
@@ -468,7 +605,8 @@ export default function Outreach() {
 
   const tabLabels = {
     all: 'All', pending: 'Pending', approved: 'Approved', contacted: 'Contacted',
-    callback: 'Callback', interested: 'Interested', rejected: 'Rejected', hired: 'Offers'
+    callback: 'Callback', interested: 'Interested', scheduled: 'Scheduled',
+    rejected: 'Rejected', hired: 'Offers'
   }
 
   return (
@@ -478,11 +616,11 @@ export default function Outreach() {
       <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '10px 14px', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
         <div style={{ display: 'flex', flex: 1 }}>
           {[
-            { label: 'Total',   value: records.length,                                    color: '#2d3748' },
-            { label: 'Pending', value: counts.pending || 0,                               color: '#dd6b20' },
-            { label: 'Active',  value: (counts.contacted || 0) + (counts.callback || 0),  color: '#805ad5' },
-            { label: 'Hot',     value: counts.interested || 0,                            color: '#38a169' },
-            { label: 'Offers',  value: counts.hired || 0,                                 color: '#00897b' },
+            { label: 'Total',     value: records.length,                                                color: '#2d3748' },
+            { label: 'Pending',   value: counts.pending || 0,                                          color: '#dd6b20' },
+            { label: 'Active',    value: (counts.contacted || 0) + (counts.callback || 0),             color: '#805ad5' },
+            { label: 'Scheduled', value: counts.scheduled || 0,                                        color: '#534AB7' },
+            { label: 'Offers',    value: counts.hired || 0,                                            color: '#00897b' },
           ].map((s, i) => (
             <div key={s.label} style={{ flex: 1, textAlign: 'center', borderRight: i < 4 ? '1px solid #f0f0f0' : 'none' }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value}</div>
@@ -499,13 +637,13 @@ export default function Outreach() {
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
             padding: '9px 12px', border: 'none', background: 'none', fontSize: 12, cursor: 'pointer',
             fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap',
-            color: activeTab === tab ? '#3182ce' : '#718096',
-            borderBottom: activeTab === tab ? '2px solid #3182ce' : '2px solid transparent',
+            color: activeTab === tab ? '#534AB7' : '#718096',
+            borderBottom: activeTab === tab ? '2px solid #534AB7' : '2px solid transparent',
             fontWeight: activeTab === tab ? 600 : 400,
           }}>
             {tabLabels[tab]}
             {tab !== 'all' && counts[tab]
-              ? <span style={{ marginLeft: 4, fontSize: 10, background: activeTab === tab ? '#ebf8ff' : '#edf2f7', color: activeTab === tab ? '#3182ce' : '#718096', padding: '1px 5px', borderRadius: 8 }}>{counts[tab]}</span>
+              ? <span style={{ marginLeft: 4, fontSize: 10, background: activeTab === tab ? '#EEEDFE' : '#edf2f7', color: activeTab === tab ? '#534AB7' : '#718096', padding: '1px 5px', borderRadius: 8 }}>{counts[tab]}</span>
               : ''}
           </button>
         ))}
@@ -529,9 +667,7 @@ export default function Outreach() {
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6, color: '#4a5568' }}>
                 {activeTab === 'all' ? 'No outreach yet' : `No ${tabLabels[activeTab].toLowerCase()} records`}
               </div>
-              <div style={{ fontSize: 12 }}>
-                {activeTab === 'all' ? 'Go to Carriers to add jobs.' : 'Try a different tab.'}
-              </div>
+              <div style={{ fontSize: 12 }}>{activeTab === 'all' ? 'Go to Carriers to add jobs.' : 'Try a different tab.'}</div>
             </div>
           ) : filtered.map(rec => {
             const isExp = expanded === rec.id
@@ -540,8 +676,24 @@ export default function Outreach() {
             return (
               <div key={rec.id} id={`card-${rec.id}`} style={{
                 background: 'white', borderRadius: 12,
-                border: `1px solid ${isExp ? '#AFA9EC' : '#e2e8f0'}`,
+                border: `1px solid ${rec.status === 'scheduled' ? '#AFA9EC' : isExp ? '#AFA9EC' : '#e2e8f0'}`,
               }}>
+                {/* Meeting banner on card (collapsed view) */}
+                {rec.status === 'scheduled' && rec.scheduled_at && !isExp && (
+                  <div style={{ background: '#EEEDFE', borderRadius: '12px 12px 0 0', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #AFA9EC' }}>
+                    <span style={{ fontSize: 12 }}>📅</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#534AB7' }}>
+                      {(() => {
+                        try {
+                          const d = new Date(rec.scheduled_at)
+                          return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+                            ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                        } catch { return 'Meeting scheduled' }
+                      })()}
+                    </span>
+                  </div>
+                )}
+
                 {/* Summary */}
                 <div onClick={() => handleExpand(rec.id)}
                   style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -586,9 +738,7 @@ export default function Outreach() {
                     )}
 
                     {isChecking ? (
-                      <div style={{ padding: '12px', textAlign: 'center', fontSize: 13, color: '#718096' }}>
-                        ⏳ Looking up FMCSA data...
-                      </div>
+                      <div style={{ padding: '12px', textAlign: 'center', fontSize: 13, color: '#718096' }}>⏳ Looking up FMCSA data...</div>
                     ) : (
                       <ActionButtons
                         rec={rec}
@@ -597,6 +747,7 @@ export default function Outreach() {
                         onFmcsa={fmcsaCheck}
                         onViewFmcsa={() => viewFmcsa(rec)}
                         onDelete={(id, name) => { deleteRecord(id, name); setExpanded(null) }}
+                        onSchedule={() => { setScheduleRec(rec); setExpanded(null) }}
                       />
                     )}
                   </div>
@@ -614,6 +765,14 @@ export default function Outreach() {
 
       {/* Modals */}
       {callRec && <CallModal rec={callRec} onClose={() => setCallRec(null)} onDispatched={() => { load(); showToast('Call dispatched!') }} />}
+
+      {scheduleRec && (
+        <ScheduleModal
+          rec={scheduleRec}
+          onClose={() => setScheduleRec(null)}
+          onSaved={() => { load(); showToast('📅 Meeting saved!') }}
+        />
+      )}
 
       {fmcsaSheet && (
         <FmcsaSheet
