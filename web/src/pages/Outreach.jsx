@@ -44,39 +44,51 @@ function ScoreBar({ score }) {
   )
 }
 
+// ── Meeting time helpers ──────────────────────────────────────────────────────
+// Read the correct local time from meeting_notes text first (avoids UTC timezone shift).
+// Notes written by Claude contain e.g. "Meeting scheduled: Wednesday, April 1 at 11:00 AM"
+// which is always the correct local time — unlike scheduled_at which is stored as UTC.
+
+function extractMeetingDisplay(scheduledAt, meetingNotes) {
+  if (meetingNotes) {
+    const match = meetingNotes.match(/Meeting scheduled:\s*(.+?)(?:\n|$)/i)
+    if (match) return match[1].trim()
+  }
+  if (scheduledAt) {
+    try {
+      const d = new Date(scheduledAt)
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+        ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    } catch { return 'Meeting scheduled' }
+  }
+  return null
+}
+
+function buildCalendarLink(scheduledAt, meetingNotes) {
+  if (!scheduledAt) return null
+  try {
+    const start = new Date(scheduledAt)
+    const end   = new Date(start.getTime() + 60 * 60 * 1000)
+    const fmt   = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+    const params = new URLSearchParams({
+      action:  'TEMPLATE',
+      text:    'Recruiter Call — ProxieAgent',
+      dates:   `${fmt(start)}/${fmt(end)}`,
+      details: meetingNotes || 'Meeting scheduled by Proxie Agent',
+    })
+    return `https://calendar.google.com/calendar/render?${params}`
+  } catch { return null }
+}
+
 // ── Meeting Badge ─────────────────────────────────────────────────────────────
 function MeetingBadge({ scheduledAt, meetingNotes }) {
   if (!scheduledAt && !meetingNotes) return null
 
-    const fmtDate = (iso) => {
-    try {
-        const d = new Date(iso)
-        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    } catch { return iso }
-    }
-
-    const fmtTime = (iso) => {
-    try {
-        const d = new Date(iso)
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    } catch { return '' }
-    }
-
-  // Build Google Calendar link
-  const calendarLink = scheduledAt ? (() => {
-    try {
-      const start = new Date(scheduledAt)
-      const end   = new Date(start.getTime() + 60 * 60 * 1000) // +1 hour
-      const fmt   = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
-      const params = new URLSearchParams({
-        action: 'TEMPLATE',
-        text: 'Recruiter Call — ProxieAgent',
-        dates: `${fmt(start)}/${fmt(end)}`,
-        details: meetingNotes || 'Meeting scheduled by Proxie Agent',
-      })
-      return `https://calendar.google.com/calendar/render?${params}`
-    } catch { return null }
-  })() : null
+  const displayTime  = extractMeetingDisplay(scheduledAt, meetingNotes)
+  const calendarLink = buildCalendarLink(scheduledAt, meetingNotes)
+  const notesBody    = meetingNotes
+    ? meetingNotes.replace(/^Meeting scheduled:.*(\n|$)/i, '').trim()
+    : ''
 
   return (
     <div style={{ background: '#EEEDFE', border: '1px solid #AFA9EC', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
@@ -85,13 +97,11 @@ function MeetingBadge({ scheduledAt, meetingNotes }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
             📅 Meeting Scheduled
           </div>
-          {scheduledAt && (
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#26215C' }}>
-              {fmtDate(scheduledAt)}{fmtTime(scheduledAt) ? ` · ${fmtTime(scheduledAt)}` : ''}
-            </div>
+          {displayTime && (
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#26215C' }}>{displayTime}</div>
           )}
-          {meetingNotes && (
-            <div style={{ fontSize: 11, color: '#534AB7', marginTop: 3, lineHeight: 1.5 }}>{meetingNotes}</div>
+          {notesBody && (
+            <div style={{ fontSize: 11, color: '#534AB7', marginTop: 3, lineHeight: 1.5 }}>{notesBody}</div>
           )}
         </div>
         {calendarLink && (
@@ -150,7 +160,6 @@ function ScheduleModal({ rec, onClose, onSaved }) {
         <div style={{ fontSize: 12, color: '#718096', marginBottom: 16 }}>
           Set the date and time agreed on with the recruiter at <strong>{rec.carrier_name}</strong>.
         </div>
-
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#718096', marginBottom: 6 }}>Date & Time</label>
         <input
           type="datetime-local"
@@ -158,7 +167,6 @@ function ScheduleModal({ rec, onClose, onSaved }) {
           onChange={e => setDatetime(e.target.value)}
           style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, outline: 'none', marginBottom: 14, fontFamily: 'inherit', boxSizing: 'border-box' }}
         />
-
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#718096', marginBottom: 6 }}>Notes (optional)</label>
         <textarea
           value={notes}
@@ -167,7 +175,6 @@ function ScheduleModal({ rec, onClose, onSaved }) {
           rows={3}
           style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', marginBottom: 20, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
         />
-
         <div style={{ display: 'flex', gap: 10 }}>
           {rec.scheduled_at && (
             <button onClick={clear} disabled={saving} style={{
@@ -251,9 +258,9 @@ function FmcsaSheet({ data, carrierName, onClose }) {
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 8 }}>Operating Authority</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {[
-                  { label: 'Common', value: data?.common_authority },
+                  { label: 'Common',   value: data?.common_authority },
                   { label: 'Contract', value: data?.contract_authority },
-                  { label: 'Broker', value: data?.broker_authority },
+                  { label: 'Broker',   value: data?.broker_authority },
                 ].filter(a => a.value).map(a => (
                   <span key={a.label} style={{
                     padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
@@ -267,22 +274,18 @@ function FmcsaSheet({ data, carrierName, onClose }) {
           )}
           {(data?.cargo_carried?.length > 0 || data?.operation_classes?.length > 0) && (
             <div style={{ marginBottom: 16 }}>
-              {data?.operation_classes?.length > 0 && (
-                <>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 6 }}>Operation Type</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
-                    {data.operation_classes.map(o => <span key={o} style={{ padding: '3px 9px', background: '#EEEDFE', color: '#3C3489', border: '1px solid #AFA9EC', borderRadius: 12, fontSize: 11 }}>{o}</span>)}
-                  </div>
-                </>
-              )}
-              {data?.cargo_carried?.length > 0 && (
-                <>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 6 }}>Cargo Carried</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {data.cargo_carried.map(c => <span key={c} style={{ padding: '3px 9px', background: '#f7fafc', color: '#4a5568', border: '1px solid #e2e8f0', borderRadius: 12, fontSize: 11 }}>{c}</span>)}
-                  </div>
-                </>
-              )}
+              {data?.operation_classes?.length > 0 && (<>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 6 }}>Operation Type</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+                  {data.operation_classes.map(o => <span key={o} style={{ padding: '3px 9px', background: '#EEEDFE', color: '#3C3489', border: '1px solid #AFA9EC', borderRadius: 12, fontSize: 11 }}>{o}</span>)}
+                </div>
+              </>)}
+              {data?.cargo_carried?.length > 0 && (<>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: '#718096', marginBottom: 6 }}>Cargo Carried</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {data.cargo_carried.map(c => <span key={c} style={{ padding: '3px 9px', background: '#f7fafc', color: '#4a5568', border: '1px solid #e2e8f0', borderRadius: 12, fontSize: 11 }}>{c}</span>)}
+                </div>
+              </>)}
             </div>
           )}
           {data?.warnings?.length > 0 && (
@@ -403,7 +406,6 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete, 
       </>)}
 
       {rec.status === 'scheduled' && (<>
-        {/* Meeting badge shown above action buttons */}
         <MeetingBadge scheduledAt={rec.scheduled_at} meetingNotes={rec.meeting_notes} />
         <div style={{ fontSize: 11, fontWeight: 600, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px' }}>📅 Meeting confirmed</div>
         <button onClick={() => onUpdate(rec.id, 'hired')} style={{
@@ -435,7 +437,6 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete, 
 
       {rec.status === 'passed' && pill('↺ Reconsider', () => onUpdate(rec.id, 'pending'), 'white', '#718096', '#e2e8f0')}
 
-      {/* FMCSA + Delete */}
       <div style={{ display: 'flex', gap: 8, paddingTop: 4, borderTop: '1px solid #f0f0f0', marginTop: 2 }}>
         {hasFmcsa
           ? <button onClick={onViewFmcsa} style={{ flex: 1, padding: '8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: '#f0fff4', color: '#276749', border: '1px solid #9ae6b4', fontWeight: 600 }}>🛡 View FMCSA ✓</button>
@@ -450,7 +451,7 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete, 
 // ── Call Modal ────────────────────────────────────────────────────────────────
 function CallModal({ rec, onClose, onDispatched }) {
   const [phone, setPhone] = useState(rec?.recruiter_phone || '')
-  const [name, setName] = useState(rec?.recruiter_name || '')
+  const [name, setName]   = useState(rec?.recruiter_name || '')
   const [loading, setLoading] = useState(false)
 
   const dispatch = async () => {
@@ -496,16 +497,16 @@ function CallModal({ rec, onClose, onDispatched }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Outreach() {
-  const [records, setRecords] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('all')
-  const [search, setSearch] = useState('')
-  const [callRec, setCallRec] = useState(null)
-  const [scheduleRec, setScheduleRec] = useState(null)
-  const [toast, setToast] = useState('')
-  const [toastType, setToastType] = useState('')
-  const [expanded, setExpanded] = useState(null)
-  const [fmcsaSheet, setFmcsaSheet] = useState(null)
+  const [records, setRecords]           = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [activeTab, setActiveTab]       = useState('all')
+  const [search, setSearch]             = useState('')
+  const [callRec, setCallRec]           = useState(null)
+  const [scheduleRec, setScheduleRec]   = useState(null)
+  const [toast, setToast]               = useState('')
+  const [toastType, setToastType]       = useState('')
+  const [expanded, setExpanded]         = useState(null)
+  const [fmcsaSheet, setFmcsaSheet]     = useState(null)
   const [fmcsaLoading, setFmcsaLoading] = useState(null)
 
   const showToast = (msg, type = '') => {
@@ -584,8 +585,7 @@ export default function Outreach() {
     }
   }
 
-  const counts = records.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc }, {})
-
+  const counts  = records.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc }, {})
   const filtered = records.filter(r => {
     if (activeTab !== 'all' && r.status !== activeTab) return false
     if (search) {
@@ -616,11 +616,11 @@ export default function Outreach() {
       <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '10px 14px', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
         <div style={{ display: 'flex', flex: 1 }}>
           {[
-            { label: 'Total',     value: records.length,                                                color: '#2d3748' },
-            { label: 'Pending',   value: counts.pending || 0,                                          color: '#dd6b20' },
-            { label: 'Active',    value: (counts.contacted || 0) + (counts.callback || 0),             color: '#805ad5' },
-            { label: 'Scheduled', value: counts.scheduled || 0,                                        color: '#534AB7' },
-            { label: 'Offers',    value: counts.hired || 0,                                            color: '#00897b' },
+            { label: 'Total',     value: records.length,                                   color: '#2d3748' },
+            { label: 'Pending',   value: counts.pending || 0,                              color: '#dd6b20' },
+            { label: 'Active',    value: (counts.contacted || 0) + (counts.callback || 0), color: '#805ad5' },
+            { label: 'Scheduled', value: counts.scheduled || 0,                            color: '#534AB7' },
+            { label: 'Offers',    value: counts.hired || 0,                                color: '#00897b' },
           ].map((s, i) => (
             <div key={s.label} style={{ flex: 1, textAlign: 'center', borderRight: i < 4 ? '1px solid #f0f0f0' : 'none' }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value}</div>
@@ -658,7 +658,6 @@ export default function Outreach() {
       {/* Cards */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 100px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-
           {loading ? (
             [1, 2, 3].map(i => <div key={i} style={{ background: 'white', borderRadius: 10, height: 90, border: '1px solid #e2e8f0' }} />)
           ) : filtered.length === 0 ? (
@@ -670,31 +669,24 @@ export default function Outreach() {
               <div style={{ fontSize: 12 }}>{activeTab === 'all' ? 'Go to Carriers to add jobs.' : 'Try a different tab.'}</div>
             </div>
           ) : filtered.map(rec => {
-            const isExp = expanded === rec.id
+            const isExp      = expanded === rec.id
             const isChecking = fmcsaLoading === rec.id
-
             return (
               <div key={rec.id} id={`card-${rec.id}`} style={{
                 background: 'white', borderRadius: 12,
                 border: `1px solid ${rec.status === 'scheduled' ? '#AFA9EC' : isExp ? '#AFA9EC' : '#e2e8f0'}`,
               }}>
-                {/* Meeting banner on card (collapsed view) */}
-                {rec.status === 'scheduled' && rec.scheduled_at && !isExp && (
+                {/* Meeting banner — collapsed */}
+                {rec.status === 'scheduled' && (rec.scheduled_at || rec.meeting_notes) && !isExp && (
                   <div style={{ background: '#EEEDFE', borderRadius: '12px 12px 0 0', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #AFA9EC' }}>
                     <span style={{ fontSize: 12 }}>📅</span>
                     <span style={{ fontSize: 11, fontWeight: 600, color: '#534AB7' }}>
-                      {(() => {
-                        try {
-                          const d = new Date(rec.scheduled_at)
-                          return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Chicago' }) +
-                            ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
-                        } catch { return 'Meeting scheduled' }
-                      })()}
+                      {extractMeetingDisplay(rec.scheduled_at, rec.meeting_notes) || 'Meeting scheduled'}
                     </span>
                   </div>
                 )}
 
-                {/* Summary */}
+                {/* Summary row */}
                 <div onClick={() => handleExpand(rec.id)}
                   style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -719,7 +711,7 @@ export default function Outreach() {
                   </div>
                 </div>
 
-                {/* Expanded */}
+                {/* Expanded panel */}
                 {isExp && (
                   <div style={{ borderTop: '1px solid #f0f0f0', padding: '14px 14px 18px', background: '#fafbfc', borderRadius: '0 0 12px 12px' }}>
                     {rec.recruiter_phone ? (
@@ -736,7 +728,6 @@ export default function Outreach() {
                         View job posting ↗
                       </a>
                     )}
-
                     {isChecking ? (
                       <div style={{ padding: '12px', textAlign: 'center', fontSize: 13, color: '#718096' }}>⏳ Looking up FMCSA data...</div>
                     ) : (
@@ -765,22 +756,8 @@ export default function Outreach() {
 
       {/* Modals */}
       {callRec && <CallModal rec={callRec} onClose={() => setCallRec(null)} onDispatched={() => { load(); showToast('Call dispatched!') }} />}
-
-      {scheduleRec && (
-        <ScheduleModal
-          rec={scheduleRec}
-          onClose={() => setScheduleRec(null)}
-          onSaved={() => { load(); showToast('📅 Meeting saved!') }}
-        />
-      )}
-
-      {fmcsaSheet && (
-        <FmcsaSheet
-          data={fmcsaSheet.data}
-          carrierName={fmcsaSheet.carrierName}
-          onClose={() => setFmcsaSheet(null)}
-        />
-      )}
+      {scheduleRec && <ScheduleModal rec={scheduleRec} onClose={() => setScheduleRec(null)} onSaved={() => { load(); showToast('📅 Meeting saved!') }} />}
+      {fmcsaSheet && <FmcsaSheet data={fmcsaSheet.data} carrierName={fmcsaSheet.carrierName} onClose={() => setFmcsaSheet(null)} />}
 
       {/* Toast */}
       {toast && (
