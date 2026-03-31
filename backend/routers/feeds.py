@@ -36,7 +36,6 @@ class FeedCreate(BaseModel):
 
 # ── Admin check ───────────────────────────────────────────────────────────────
 def require_admin(user: dict = Depends(get_current_user)):
-    """Dependency that requires the current user to be an admin."""
     with db() as cur:
         cur.execute("SELECT role FROM users WHERE id=%s", (int(user["sub"]),))
         row = cur.fetchone()
@@ -69,17 +68,85 @@ def _extract_cpm(text: str) -> Optional[float]:
 
 
 def _extract_weekly(text: str) -> Optional[float]:
+    """
+    Extract weekly pay from text. Conservative to avoid false positives from:
+    - Annual salaries ($85,000/year, $100,000+/year)
+    - Yearly earnings mentions ("earn $100,000+ per year")
+    - Per-mile rates confused as weekly amounts
+
+    Rules:
+    1. Never return > $5,000/week (realistic CDL max weekly gross)
+    2. Skip any amount explicitly tied to annual/yearly language
+    3. Only return amounts 400-5000 that have clear weekly context OR
+       appear in a short dedicated pay field (< 40 chars)
+    """
     if not text:
         return None
-    text = str(text).replace(',', '')
-    amounts = re.findall(r'\$?(\d{3,5})(?:\.\d+)?', text)
-    valid = [float(a) for a in amounts if 400 <= float(a) <= 10000]
-    if not valid:
+
+    text_str  = str(text)
+    text_lower = text_str.lower()
+
+    # If the text mentions annual/yearly context, strip those numbers out first
+    # so they don't get picked up as weekly pay
+    annual_pattern = re.compile(
+        r'\$[\d,]+\+?\s*(?:per\s*year|a\s*year|/\s*year|annually|annual|per\s*yr|/yr)',
+        re.IGNORECASE
+    )
+    # Also strip "earn $X+" annual earnings mentions
+    earn_annual = re.compile(
+        r'earn\s+\$[\d,]+\+',
+        re.IGNORECASE
+    )
+    # And strip numbers followed by + that are clearly annual (>10k)
+    text_cleaned = annual_pattern.sub('ANNUAL_REMOVED', text_str)
+    text_cleaned = earn_annual.sub('ANNUAL_REMOVED', text_cleaned)
+
+    # Now strip commas for number parsing
+    text_cleaned = text_cleaned.replace(',', '')
+
+    # Find all dollar amounts in the cleaned text (3-5 digits = $100-$99999)
+    # Use finditer to get context around each match
+    weekly_keywords = ['/wk', '/week', 'weekly', 'per week', 'a week', 'each week', 'week!', 'per wk']
+    has_weekly_context = any(kw in text_lower for kw in weekly_keywords)
+
+    amounts_with_context = []
+    for m in re.finditer(r'\$?(\d{3,5})(?:\.\d+)?(?!\d)', text_cleaned):
+        val = float(m.group(1))
+        if val < 400 or val > 5000:
+            continue  # Outside realistic weekly range — skip
+        # Get surrounding context (50 chars each side)
+        start = max(0, m.start() - 50)
+        end   = min(len(text_cleaned), m.end() + 50)
+        ctx   = text_cleaned[start:end].lower()
+        # Skip if this specific number has annual context nearby
+        if any(kw in ctx for kw in ['year', 'annual', 'annually', '/yr']):
+            continue
+        amounts_with_context.append(val)
+
+    if not amounts_with_context:
         return None
-    if any(kw in text.lower() for kw in ['/wk', '/week', 'weekly', 'per week', 'a week', 'week!']):
-        return max(valid)
-    if len(text) < 50:
-        return max(valid)
+
+    # Only return a value if:
+    # 1. There's explicit weekly language, OR
+    # 2. The text is short (dedicated pay field, not a description), OR
+    # 3. There's a pay range pattern like "$X - $Y per week" or "$X-$Y/wk"
+    pay_range = re.search(
+        r'\$?(\d{3,4})\s*[-–]\s*\$?(\d{3,4})\s*(?:per\s*week|/wk|weekly)',
+        text_str, re.IGNORECASE
+    )
+    if pay_range:
+        # Return the higher end of the range
+        return max(float(pay_range.group(1).replace(',', '')),
+                   float(pay_range.group(2).replace(',', '')))
+
+    if has_weekly_context:
+        return max(amounts_with_context)
+
+    if len(text_str.strip()) < 40:
+        # Short dedicated field — trust it
+        return max(amounts_with_context)
+
+    # Long description text with no weekly keywords — don't guess
     return None
 
 
@@ -375,7 +442,6 @@ def score_job(job: dict, rules: AgentRules) -> int:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-# ── GET feeds — all authenticated users see ALL feeds (global) ────────────────
 @router.get("/feeds")
 def list_feeds(user: dict = Depends(get_current_user)):
     with db() as cur:
@@ -384,10 +450,8 @@ def list_feeds(user: dict = Depends(get_current_user)):
     return {"feeds": [row_to_dict(r) for r in rows]}
 
 
-# ── CREATE feed — admin only ───────────────────────────────────────────────────
 @router.post("/feeds")
 async def create_feed(feed: FeedCreate, user: dict = Depends(require_admin)):
-    """Create a new global feed. Admin only."""
     admin_id = int(user["sub"])
     fm = feed.field_map or {}
     if feed.default_carrier:
@@ -408,10 +472,8 @@ async def create_feed(feed: FeedCreate, user: dict = Depends(require_admin)):
     return {"success": True, "feed_id": feed_id, "message": "Feed created. Click Sync to load jobs."}
 
 
-# ── SYNC feed — admin only ─────────────────────────────────────────────────────
 @router.post("/feeds/{feed_id}/sync")
 async def sync_feed(feed_id: int, user: dict = Depends(require_admin)):
-    """Sync a feed and score jobs for ALL active users. Admin only."""
     with db() as cur:
         cur.execute("SELECT * FROM carrier_feeds WHERE id=%s", (feed_id,))
         row = cur.fetchone()
@@ -422,7 +484,6 @@ async def sync_feed(feed_id: int, user: dict = Depends(require_admin)):
     try:
         jobs = await fetch_and_parse(feed)
 
-        # Get all active users so we can score per-user and insert for each
         with db() as cur:
             cur.execute("SELECT id FROM users WHERE is_active=1")
             user_rows = cur.fetchall()
@@ -483,17 +544,14 @@ async def sync_feed(feed_id: int, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail=f"Feed sync failed: {e}")
 
 
-# ── DELETE feed — admin only ───────────────────────────────────────────────────
 @router.delete("/feeds/{feed_id}")
 def delete_feed(feed_id: int, user: dict = Depends(require_admin)):
-    """Delete a feed and all its jobs. Admin only."""
     with db() as cur:
         cur.execute("DELETE FROM feed_jobs WHERE feed_id=%s", (feed_id,))
         cur.execute("DELETE FROM carrier_feeds WHERE id=%s", (feed_id,))
     return {"success": True}
 
 
-# ── GET jobs — all authenticated users, scored for their own rules ─────────────
 @router.get("/feeds/jobs")
 def get_feed_jobs(
     user: dict = Depends(get_current_user),
@@ -504,7 +562,6 @@ def get_feed_jobs(
     page: int = 1,
     per_page: int = 20,
 ):
-    """Return jobs for the current user (scored against their rules)."""
     user_id = int(user["sub"])
     offset  = (page - 1) * per_page
 
@@ -545,7 +602,7 @@ def get_feed_jobs(
         )
         total_row = cur.fetchone()
 
-    total      = row_to_dict(total_row).get('cnt', 0) if total_row else 0
+    total       = row_to_dict(total_row).get('cnt', 0) if total_row else 0
     total_pages = max(1, (total + per_page - 1) // per_page)
     rules_active = apply_rules and getattr(get_user_rules_obj(user_id), 'rules_active', False)
 
@@ -557,10 +614,8 @@ def get_feed_jobs(
     }
 
 
-# ── RE-SCORE — any user re-scores their own jobs ───────────────────────────────
 @router.post("/feeds/rescore")
 def rescore_feed_jobs(user: dict = Depends(get_current_user)):
-    """Re-score this user's copy of all feed jobs against their current rules."""
     user_id = int(user["sub"])
     rules   = get_user_rules_obj(user_id)
     with db() as cur:
@@ -577,7 +632,6 @@ def rescore_feed_jobs(user: dict = Depends(get_current_user)):
     return {"success": True, "updated": updated}
 
 
-# ── QUEUE single job ───────────────────────────────────────────────────────────
 @router.post("/feeds/jobs/{job_id}/queue")
 def queue_feed_job(job_id: int, user: dict = Depends(get_current_user)):
     user_id = int(user["sub"])
@@ -589,7 +643,7 @@ def queue_feed_job(job_id: int, user: dict = Depends(get_current_user)):
     j = row_to_dict(row)
 
     import uuid
-    record_id = uuid.uuid4().hex[:20]
+    record_id  = uuid.uuid4().hex[:20]
     carrier_id = f"feed_{uuid.uuid4().hex[:12]}"
 
     with db() as cur:
@@ -606,7 +660,6 @@ def queue_feed_job(job_id: int, user: dict = Depends(get_current_user)):
     return {"success": True}
 
 
-# ── QUEUE bulk ─────────────────────────────────────────────────────────────────
 @router.post("/feeds/jobs/queue-bulk")
 def queue_bulk_feed_jobs(payload: dict, user: dict = Depends(get_current_user)):
     user_id = int(user["sub"])
