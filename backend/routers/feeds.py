@@ -9,11 +9,12 @@ import csv
 import io
 import re
 import hashlib
+import asyncio
 from typing import Optional
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from db.database import db, row_to_dict
@@ -21,6 +22,9 @@ from db.auth import get_current_user
 from agent.rules import AgentRules, score_carrier_against_rules
 
 router = APIRouter()
+
+# Track sync status in memory so the UI can poll it
+_sync_status: dict[int, dict] = {}
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -83,29 +87,19 @@ def _extract_weekly(text: str) -> Optional[float]:
     if not text:
         return None
 
-    text_str  = str(text)
+    text_str   = str(text)
     text_lower = text_str.lower()
 
-    # If the text mentions annual/yearly context, strip those numbers out first
-    # so they don't get picked up as weekly pay
+    # Strip annual/yearly mentions before scanning
     annual_pattern = re.compile(
         r'\$[\d,]+\+?\s*(?:per\s*year|a\s*year|/\s*year|annually|annual|per\s*yr|/yr)',
         re.IGNORECASE
     )
-    # Also strip "earn $X+" annual earnings mentions
-    earn_annual = re.compile(
-        r'earn\s+\$[\d,]+\+',
-        re.IGNORECASE
-    )
-    # And strip numbers followed by + that are clearly annual (>10k)
+    earn_annual = re.compile(r'earn\s+\$[\d,]+\+', re.IGNORECASE)
     text_cleaned = annual_pattern.sub('ANNUAL_REMOVED', text_str)
     text_cleaned = earn_annual.sub('ANNUAL_REMOVED', text_cleaned)
-
-    # Now strip commas for number parsing
     text_cleaned = text_cleaned.replace(',', '')
 
-    # Find all dollar amounts in the cleaned text (3-5 digits = $100-$99999)
-    # Use finditer to get context around each match
     weekly_keywords = ['/wk', '/week', 'weekly', 'per week', 'a week', 'each week', 'week!', 'per wk']
     has_weekly_context = any(kw in text_lower for kw in weekly_keywords)
 
@@ -113,12 +107,10 @@ def _extract_weekly(text: str) -> Optional[float]:
     for m in re.finditer(r'\$?(\d{3,5})(?:\.\d+)?(?!\d)', text_cleaned):
         val = float(m.group(1))
         if val < 400 or val > 5000:
-            continue  # Outside realistic weekly range — skip
-        # Get surrounding context (50 chars each side)
+            continue
         start = max(0, m.start() - 50)
         end   = min(len(text_cleaned), m.end() + 50)
         ctx   = text_cleaned[start:end].lower()
-        # Skip if this specific number has annual context nearby
         if any(kw in ctx for kw in ['year', 'annual', 'annually', '/yr']):
             continue
         amounts_with_context.append(val)
@@ -126,16 +118,11 @@ def _extract_weekly(text: str) -> Optional[float]:
     if not amounts_with_context:
         return None
 
-    # Only return a value if:
-    # 1. There's explicit weekly language, OR
-    # 2. The text is short (dedicated pay field, not a description), OR
-    # 3. There's a pay range pattern like "$X - $Y per week" or "$X-$Y/wk"
     pay_range = re.search(
         r'\$?(\d{3,4})\s*[-–]\s*\$?(\d{3,4})\s*(?:per\s*week|/wk|weekly)',
         text_str, re.IGNORECASE
     )
     if pay_range:
-        # Return the higher end of the range
         return max(float(pay_range.group(1).replace(',', '')),
                    float(pay_range.group(2).replace(',', '')))
 
@@ -143,10 +130,8 @@ def _extract_weekly(text: str) -> Optional[float]:
         return max(amounts_with_context)
 
     if len(text_str.strip()) < 40:
-        # Short dedicated field — trust it
         return max(amounts_with_context)
 
-    # Long description text with no weekly keywords — don't guess
     return None
 
 
@@ -211,11 +196,15 @@ def parse_xml_feed(content: str, field_map: dict = None, feed_id: int = 0) -> li
         )
         location = _clean_location(
             fm.get('location') and tag_text(item, fm['location']) or
-            tag_text(item, 'location', 'Location', 'city', 'City', 'jobLocation', 'job_location', 'worksite')
+            tag_text(item, 'location', 'Location', 'city', 'City',
+                     'jobLocation', 'job_location', 'worksite')
         )
-        pay_text  = tag_text(item, 'salary', 'Salary', 'compensation', 'Compensation', 'pay', 'Pay', 'rate', 'cpm', 'CPM')
-        url       = tag_text(item, 'url', 'URL', 'link', 'Link', 'apply_url', 'applyUrl', 'job_url', 'jobUrl', 'detailUrl')
-        desc      = tag_text(item, 'description', 'Description', 'body', 'summary', 'jobDescription', 'requirements')
+        pay_text  = tag_text(item, 'salary', 'Salary', 'compensation', 'Compensation',
+                              'pay', 'Pay', 'rate', 'cpm', 'CPM')
+        url       = tag_text(item, 'url', 'URL', 'link', 'Link', 'apply_url', 'applyUrl',
+                              'job_url', 'jobUrl', 'detailUrl')
+        desc      = tag_text(item, 'description', 'Description', 'body', 'summary',
+                              'jobDescription', 'requirements')
         home_time = tag_text(item, 'hometime', 'homeTime', 'home_time', 'schedule', 'Schedule')
         phone     = tag_text(item, 'phone', 'Phone', 'recruiterPhone', 'recruiter_phone', 'contactPhone')
 
@@ -256,7 +245,8 @@ def _extract_home_time_from_text(text: str) -> str:
     return ""
 
 
-def parse_json_feed(content: str, field_map: dict = None, feed_id: int = 0, default_carrier: str = "", default_phone: str = "") -> list[dict]:
+def parse_json_feed(content: str, field_map: dict = None, feed_id: int = 0,
+                    default_carrier: str = "", default_phone: str = "") -> list[dict]:
     fm = field_map or {}
     try:
         data = json.loads(content)
@@ -293,24 +283,28 @@ def parse_json_feed(content: str, field_map: dict = None, feed_id: int = 0, defa
         elif city or state:
             location = f"{city.strip()}{state.strip()}"
         else:
-            location = _clean_location(_get(row, fm.get('location', ''), 'location', 'jobLocation', 'address'))
+            location = _clean_location(_get(row, fm.get('location', ''),
+                                            'location', 'jobLocation', 'address'))
 
-        desc     = _get(row, 'description', 'summary', 'body', 'jobDescription')
-        benefits = _get(row, 'job_benefits', 'benefits', 'jobBenefits', 'perks')
+        desc      = _get(row, 'description', 'summary', 'body', 'jobDescription')
+        benefits  = _get(row, 'job_benefits', 'benefits', 'jobBenefits', 'perks')
         full_text = f"{desc} {benefits}"
-        pay_text  = _get(row, 'pay', 'Pay', 'salary', 'compensation', 'rate', 'cpm', 'base_salary', 'wage')
+        pay_text  = _get(row, 'pay', 'Pay', 'salary', 'compensation', 'rate', 'cpm',
+                         'base_salary', 'wage')
         cpm_raw   = _get(row, 'cents_per_mile', 'cpm', 'CPM', 'centsPerMile')
 
         if not pay_text and not cpm_raw:
             pay_text = full_text
 
-        url = _get(row, 'base_url', 'url', 'link', 'applyUrl', 'apply_url', 'application_link', 'jobUrl', 'detailUrl')
+        url = _get(row, 'base_url', 'url', 'link', 'applyUrl', 'apply_url',
+                   'application_link', 'jobUrl', 'detailUrl')
         home_time = (
             _get(row, 'home_time', 'homeTime', 'hometime', 'schedule') or
             _get(row, 'campaign_name_filter', 'campaignNameFilter') or
             _extract_home_time_from_text(full_text)
         )
-        phone = (_get(row, 'phone', 'recruiterPhone', 'contactPhone', 'recruiter_phone') or default_phone)
+        phone = (_get(row, 'phone', 'recruiterPhone', 'contactPhone', 'recruiter_phone')
+                 or default_phone)
         ext_id_val = (
             _get(row, 'leadflex_job_id', 'external_job_id', 'requisition_id',
                  'requisitionId', 'id', 'jobId', 'job_id') or
@@ -410,7 +404,8 @@ def get_user_rules_obj(user_id: int) -> AgentRules:
         if not row:
             return AgentRules()
         r = row_to_dict(row)
-        for f in ['pay_types_accepted', 'preferred_regions', 'states_blacklist', 'blacklisted_carriers', 'preferred_carriers']:
+        for f in ['pay_types_accepted', 'preferred_regions', 'states_blacklist',
+                  'blacklisted_carriers', 'preferred_carriers']:
             if isinstance(r.get(f), str):
                 try: r[f] = json.loads(r[f])
                 except: r[f] = []
@@ -420,8 +415,8 @@ def get_user_rules_obj(user_id: int) -> AgentRules:
 
 
 def score_job(job: dict, rules: AgentRules) -> int:
-    location    = job.get('location', '')
-    state_match = re.search(r',\s*([A-Z]{2})\b', location)
+    location     = job.get('location', '')
+    state_match  = re.search(r',\s*([A-Z]{2})\b', location)
     operating_states = [state_match.group(1)] if state_match else []
     cpm    = job.get('cpm')
     weekly = job.get('weekly_pay')
@@ -438,6 +433,126 @@ def score_job(job: dict, rules: AgentRules) -> int:
     }
     result = score_carrier_against_rules(carrier, rules)
     return max(0, min(100, result.get('score', 50)))
+
+
+# ── Background sync worker ────────────────────────────────────────────────────
+async def _run_sync_background(feed_id: int, feed: dict):
+    """
+    Does the actual feed sync in the background.
+    - Fetches and parses the feed
+    - Scores jobs per user
+    - Writes to DB in batches of 50 rows at a time
+    - Yields to the event loop between batches so other requests aren't blocked
+    - Updates _sync_status so the UI can poll progress
+    """
+    _sync_status[feed_id] = {"status": "running", "progress": 0, "total": 0, "error": None}
+
+    try:
+        # Step 1: fetch + parse (network I/O — non-blocking)
+        _sync_status[feed_id]["status"] = "fetching"
+        jobs = await fetch_and_parse(feed)
+        _sync_status[feed_id]["total"] = len(jobs)
+
+        # Step 2: get active users
+        with db() as cur:
+            cur.execute("SELECT id FROM users WHERE is_active=1")
+            user_rows = cur.fetchall()
+        active_user_ids = [row_to_dict(r)['id'] for r in user_rows]
+
+        # Step 3: pre-load all user rules (one query per user, done upfront)
+        rules_map = {uid: get_user_rules_obj(uid) for uid in active_user_ids}
+
+        # Step 4: build all rows to insert
+        _sync_status[feed_id]["status"] = "scoring"
+        all_rows = []
+        for j in jobs:
+            ext_id       = j['_id']
+            freight_json = json.dumps(j.get('freight_types', []))
+            raw_json     = json.dumps({
+                k: v for k, v in j.get('_raw', {}).items()
+                if isinstance(v, (str, int, float, bool, type(None)))
+            })
+            for uid in active_user_ids:
+                score = score_job(j, rules_map[uid])
+                all_rows.append((
+                    uid, feed_id, ext_id,
+                    j['carrier_name'], j['job_title'], j['location'],
+                    j.get('cpm'), j.get('weekly_pay'), j['home_time'],
+                    freight_json, j['description'], j['job_url'],
+                    j['recruiter_phone'], score, raw_json
+                ))
+
+        # Step 5: write in batches of 50, yielding between each batch
+        _sync_status[feed_id]["status"] = "writing"
+        BATCH_SIZE = 50
+        total_rows = len(all_rows)
+
+        for batch_start in range(0, total_rows, BATCH_SIZE):
+            batch = all_rows[batch_start:batch_start + BATCH_SIZE]
+
+            # Build a single multi-row INSERT for the batch
+            placeholders = ",".join(
+                ["(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"] * len(batch)
+            )
+            flat_values = [v for row in batch for v in row]
+
+            with db() as cur:
+                cur.execute(f"""
+                    INSERT INTO feed_jobs
+                        (user_id, feed_id, external_id, carrier_name, job_title,
+                         location, cpm, weekly_pay, home_time, freight_types,
+                         description, job_url, recruiter_phone, match_score, raw_data)
+                    VALUES {placeholders}
+                    ON CONFLICT (feed_id, external_id, user_id) DO UPDATE SET
+                        carrier_name   = EXCLUDED.carrier_name,
+                        job_title      = EXCLUDED.job_title,
+                        location       = EXCLUDED.location,
+                        cpm            = EXCLUDED.cpm,
+                        weekly_pay     = EXCLUDED.weekly_pay,
+                        home_time      = EXCLUDED.home_time,
+                        job_url        = EXCLUDED.job_url,
+                        description    = EXCLUDED.description,
+                        recruiter_phone= EXCLUDED.recruiter_phone,
+                        match_score    = EXCLUDED.match_score,
+                        raw_data       = EXCLUDED.raw_data,
+                        updated_at     = NOW()
+                """, flat_values)
+
+            _sync_status[feed_id]["progress"] = min(batch_start + BATCH_SIZE, total_rows)
+
+            # Yield to event loop so other requests can be served between batches
+            await asyncio.sleep(0)
+
+        # Step 6: mark feed as synced
+        with db() as cur:
+            cur.execute("""
+                UPDATE carrier_feeds
+                SET last_synced=NOW(), job_count=%s, status='active', error_msg=NULL
+                WHERE id=%s
+            """, (len(jobs), feed_id))
+
+        _sync_status[feed_id] = {
+            "status": "done",
+            "progress": total_rows,
+            "total": total_rows,
+            "jobs_parsed": len(jobs),
+            "users_scored": len(active_user_ids),
+            "error": None,
+        }
+
+    except Exception as e:
+        print(f"[Feed sync] feed_id={feed_id} error: {e}")
+        try:
+            with db() as cur:
+                cur.execute(
+                    "UPDATE carrier_feeds SET status='error', error_msg=%s WHERE id=%s",
+                    (str(e)[:500], feed_id)
+                )
+        except Exception:
+            pass
+        _sync_status[feed_id] = {
+            "status": "error", "progress": 0, "total": 0, "error": str(e)
+        }
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -473,75 +588,60 @@ async def create_feed(feed: FeedCreate, user: dict = Depends(require_admin)):
 
 
 @router.post("/feeds/{feed_id}/sync")
-async def sync_feed(feed_id: int, user: dict = Depends(require_admin)):
+async def sync_feed(
+    feed_id: int,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_admin)
+):
+    """
+    Kicks off a background sync and returns immediately.
+    Poll GET /feeds/{feed_id}/sync-status to track progress.
+    """
     with db() as cur:
         cur.execute("SELECT * FROM carrier_feeds WHERE id=%s", (feed_id,))
         row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Feed not found")
+
+    # Don't allow two syncs of the same feed at once
+    existing = _sync_status.get(feed_id, {})
+    if existing.get("status") == "running":
+        return {"success": False, "message": "Sync already in progress for this feed."}
+
     feed = row_to_dict(row)
 
-    try:
-        jobs = await fetch_and_parse(feed)
+    # Mark feed as syncing in DB immediately
+    with db() as cur:
+        cur.execute("UPDATE carrier_feeds SET status='syncing' WHERE id=%s", (feed_id,))
 
+    # Queue the sync to run in the background
+    background_tasks.add_task(_run_sync_background, feed_id, feed)
+
+    return {
+        "success": True,
+        "message": "Sync started in background. Poll /feeds/{feed_id}/sync-status for progress.",
+        "feed_id": feed_id,
+    }
+
+
+@router.get("/feeds/{feed_id}/sync-status")
+def get_sync_status(feed_id: int, user: dict = Depends(require_admin)):
+    """Poll this endpoint to check background sync progress."""
+    status = _sync_status.get(feed_id)
+    if not status:
+        # No in-memory status — check the DB
         with db() as cur:
-            cur.execute("SELECT id FROM users WHERE is_active=1")
-            user_rows = cur.fetchall()
-        active_user_ids = [row_to_dict(r)['id'] for r in user_rows]
-
-        total_inserted = 0
-        for j in jobs:
-            ext_id       = j['_id']
-            freight_json = json.dumps(j.get('freight_types', []))
-            raw_json     = json.dumps({k: v for k, v in j.get('_raw', {}).items()
-                                       if isinstance(v, (str, int, float, bool, type(None)))})
-
-            for uid in active_user_ids:
-                rules = get_user_rules_obj(uid)
-                score = score_job(j, rules)
-
-                with db() as cur:
-                    cur.execute("""
-                        INSERT INTO feed_jobs
-                            (user_id, feed_id, external_id, carrier_name, job_title,
-                             location, cpm, weekly_pay, home_time, freight_types,
-                             description, job_url, recruiter_phone, match_score, raw_data)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        ON CONFLICT (feed_id, external_id, user_id) DO UPDATE SET
-                            carrier_name=EXCLUDED.carrier_name,
-                            job_title=EXCLUDED.job_title,
-                            location=EXCLUDED.location,
-                            cpm=EXCLUDED.cpm,
-                            weekly_pay=EXCLUDED.weekly_pay,
-                            home_time=EXCLUDED.home_time,
-                            job_url=EXCLUDED.job_url,
-                            description=EXCLUDED.description,
-                            recruiter_phone=EXCLUDED.recruiter_phone,
-                            match_score=EXCLUDED.match_score,
-                            raw_data=EXCLUDED.raw_data,
-                            updated_at=NOW()
-                    """, (uid, feed_id, ext_id, j['carrier_name'], j['job_title'],
-                          j['location'], j.get('cpm'), j.get('weekly_pay'), j['home_time'],
-                          freight_json, j['description'], j['job_url'], j['recruiter_phone'],
-                          score, raw_json))
-                total_inserted += 1
-
-        with db() as cur:
-            cur.execute("""
-                UPDATE carrier_feeds SET last_synced=NOW(), job_count=%s, status='active', error_msg=NULL
-                WHERE id=%s
-            """, (len(jobs), feed_id))
-
+            cur.execute("SELECT status, last_synced, job_count FROM carrier_feeds WHERE id=%s", (feed_id,))
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        r = row_to_dict(row)
         return {
-            "success": True, "feed_id": feed_id,
-            "jobs_parsed": len(jobs), "users_scored": len(active_user_ids),
+            "status": r.get("status", "unknown"),
+            "last_synced": str(r.get("last_synced") or ""),
+            "job_count": r.get("job_count", 0),
         }
-
-    except Exception as e:
-        with db() as cur:
-            cur.execute("UPDATE carrier_feeds SET status='error', error_msg=%s WHERE id=%s",
-                        (str(e)[:500], feed_id))
-        raise HTTPException(status_code=400, detail=f"Feed sync failed: {e}")
+    return status
 
 
 @router.delete("/feeds/{feed_id}")
@@ -602,8 +702,8 @@ def get_feed_jobs(
         )
         total_row = cur.fetchone()
 
-    total       = row_to_dict(total_row).get('cnt', 0) if total_row else 0
-    total_pages = max(1, (total + per_page - 1) // per_page)
+    total        = row_to_dict(total_row).get('cnt', 0) if total_row else 0
+    total_pages  = max(1, (total + per_page - 1) // per_page)
     rules_active = apply_rules and getattr(get_user_rules_obj(user_id), 'rules_active', False)
 
     return {
@@ -619,7 +719,10 @@ def rescore_feed_jobs(user: dict = Depends(get_current_user)):
     user_id = int(user["sub"])
     rules   = get_user_rules_obj(user_id)
     with db() as cur:
-        cur.execute("SELECT id, carrier_name, location, cpm, weekly_pay, home_time FROM feed_jobs WHERE user_id=%s", (user_id,))
+        cur.execute(
+            "SELECT id, carrier_name, location, cpm, weekly_pay, home_time FROM feed_jobs WHERE user_id=%s",
+            (user_id,)
+        )
         rows = cur.fetchall()
     updated = 0
     for row in rows:
@@ -668,8 +771,10 @@ def queue_bulk_feed_jobs(payload: dict, user: dict = Depends(get_current_user)):
     import uuid
     for job_id in job_ids:
         with db() as cur:
-            cur.execute("SELECT * FROM feed_jobs WHERE id=%s AND user_id=%s AND in_outreach=0",
-                        (job_id, user_id))
+            cur.execute(
+                "SELECT * FROM feed_jobs WHERE id=%s AND user_id=%s AND in_outreach=0",
+                (job_id, user_id)
+            )
             row = cur.fetchone()
         if not row:
             continue
