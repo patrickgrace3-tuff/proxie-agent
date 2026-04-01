@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { client } from '../store/auth'
 import { useAuthStore } from '../store/auth'
 
@@ -24,35 +24,87 @@ function stripHtml(html) {
     .replace(/<li[^>]*>/gi, '• ')
     .replace(/<strong[^>]*>/gi, '').replace(/<\/strong>/gi, '')
     .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&rsquo;/g, "'")
-    .replace(/&lsquo;/g, "'")
-    .replace(/&ldquo;/g, '"')
-    .replace(/&rdquo;/g, '"')
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ').replace(/&rsquo;/g, "'").replace(/&lsquo;/g, "'")
+    .replace(/&ldquo;/g, '"').replace(/&rdquo;/g, '"')
+    .replace(/&mdash;/g, '—').replace(/&ndash;/g, '–')
     .replace(/&#\d+;/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
+// ── Sync progress indicator ───────────────────────────────────────────────────
+function SyncProgress({ feedId, onDone }) {
+  const [status, setStatus] = useState({ status: 'starting', progress: 0, total: 0 })
+  const intervalRef = useRef(null)
+
+  useEffect(() => {
+    // Poll every 1.5 seconds
+    intervalRef.current = setInterval(async () => {
+      try {
+        const r = await client.get(`/api/feeds/feeds/${feedId}/sync-status`)
+        setStatus(r.data)
+        if (r.data.status === 'done' || r.data.status === 'error') {
+          clearInterval(intervalRef.current)
+          setTimeout(() => onDone(r.data), 800)
+        }
+      } catch (e) {
+        clearInterval(intervalRef.current)
+      }
+    }, 1500)
+    return () => clearInterval(intervalRef.current)
+  }, [feedId])
+
+  const pct = status.total > 0 ? Math.round((status.progress / status.total) * 100) : 0
+  const statusLabel = {
+    starting: 'Starting...',
+    fetching: 'Fetching feed...',
+    scoring:  'Scoring jobs...',
+    writing:  `Writing ${status.progress} / ${status.total}`,
+    done:     `Done — ${status.jobs_parsed} jobs synced`,
+    error:    `Error: ${status.error}`,
+  }[status.status] || status.status
+
+  const isError = status.status === 'error'
+  const isDone  = status.status === 'done'
+
+  return (
+    <div style={{
+      background: isError ? '#fff5f5' : isDone ? '#f0fff4' : '#ebf8ff',
+      border: `1px solid ${isError ? '#fed7d7' : isDone ? '#9ae6b4' : '#bee3f8'}`,
+      borderRadius: 8, padding: '10px 12px', marginTop: 6
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: status.total > 0 ? 6 : 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: isError ? '#c53030' : isDone ? '#276749' : '#2b6cb0' }}>
+          {isError ? '⚠ ' : isDone ? '✓ ' : '⏳ '}{statusLabel}
+        </span>
+        {status.total > 0 && !isDone && !isError && (
+          <span style={{ fontSize: 11, color: '#718096' }}>{pct}%</span>
+        )}
+      </div>
+      {status.total > 0 && !isDone && !isError && (
+        <div style={{ height: 4, background: '#bee3f8', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: '#3182ce', borderRadius: 2, transition: 'width 0.5s' }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Feed Manager (admin only) ─────────────────────────────────────────────────
 function FeedManager({ onClose, onRefresh }) {
-  const [feeds, setFeeds] = useState([])
-  const [name, setName] = useState('')
-  const [type, setType] = useState('json')
-  const [source, setSource] = useState('')
-  const [carrier, setCarrier] = useState('')
-  const [phone, setPhone] = useState('')
+  const [feeds, setFeeds]       = useState([])
+  const [name, setName]         = useState('')
+  const [type, setType]         = useState('json')
+  const [source, setSource]     = useState('')
+  const [carrier, setCarrier]   = useState('')
+  const [phone, setPhone]       = useState('')
   const [inputMode, setInputMode] = useState('url')
-  const [syncing, setSyncing] = useState(null)
-  const [adding, setAdding] = useState(false)
-  const [toast, setToast] = useState('')
+  const [adding, setAdding]     = useState(false)
+  const [syncingIds, setSyncingIds] = useState(new Set())  // feeds currently syncing
+  const [toast, setToast]       = useState('')
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   const loadFeeds = async () => {
     try {
@@ -64,7 +116,7 @@ function FeedManager({ onClose, onRefresh }) {
   useEffect(() => { loadFeeds() }, [])
 
   const addFeed = async () => {
-    if (!name) { showToast('Enter a feed name'); return }
+    if (!name)   { showToast('Enter a feed name'); return }
     if (!source) { showToast(inputMode === 'url' ? 'Enter a URL' : 'Paste content'); return }
     setAdding(true)
     try {
@@ -80,15 +132,28 @@ function FeedManager({ onClose, onRefresh }) {
     finally { setAdding(false) }
   }
 
+  // Kick off background sync — returns immediately, SyncProgress component polls
   const syncFeed = async (id) => {
-    setSyncing(id)
+    if (syncingIds.has(id)) return
+    setSyncingIds(prev => new Set([...prev, id]))
     try {
-      const r = await client.post(`/api/feeds/feeds/${id}/sync`)
-      showToast(`Synced — ${r.data.jobs_parsed} jobs`)
-      await loadFeeds()
-      onRefresh()
-    } catch (e) { showToast('Sync failed') }
-    finally { setSyncing(null) }
+      await client.post(`/api/feeds/feeds/${id}/sync`)
+      // SyncProgress component will poll and call handleSyncDone when finished
+    } catch (e) {
+      showToast('Failed to start sync: ' + (e?.response?.data?.detail || e.message))
+      setSyncingIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    }
+  }
+
+  const handleSyncDone = async (id, result) => {
+    setSyncingIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    if (result.status === 'done') {
+      showToast(`✓ Synced — ${result.jobs_parsed} jobs for ${result.users_scored} users`)
+    } else {
+      showToast(`⚠ Sync error: ${result.error}`)
+    }
+    await loadFeeds()
+    onRefresh()
   }
 
   const deleteFeed = async (id, feedName) => {
@@ -109,12 +174,14 @@ function FeedManager({ onClose, onRefresh }) {
       <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📡 Manage Job Feeds</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📡 Manage Job Feeds</h3>
             <div style={{ fontSize: 11, color: '#718096', marginTop: 2 }}>Feeds are shared with all active users</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#a0aec0' }}>✕</button>
         </div>
+
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {/* Add new feed form */}
           <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: '#2d3748' }}>➕ Add New Feed</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -133,11 +200,15 @@ function FeedManager({ onClose, onRefresh }) {
               </div>
             </div>
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>Carrier Name <span style={{ fontWeight: 400, textTransform: 'none', color: '#a0aec0' }}>(if not in feed)</span></div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+                Carrier Name <span style={{ fontWeight: 400, textTransform: 'none', color: '#a0aec0' }}>(if not in feed)</span>
+              </div>
               {inp(carrier, setCarrier, 'e.g. Roehl Transport...')}
             </div>
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>Recruiter Phone <span style={{ fontWeight: 400, textTransform: 'none', color: '#a0aec0' }}>(if not in feed)</span></div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+                Recruiter Phone <span style={{ fontWeight: 400, textTransform: 'none', color: '#a0aec0' }}>(if not in feed)</span>
+              </div>
               {inp(phone, setPhone, '+16151234567')}
             </div>
             <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
@@ -156,48 +227,83 @@ function FeedManager({ onClose, onRefresh }) {
               </div>
               {inputMode === 'url'
                 ? inp(source, setSource, 'https://jobs.example.com/feed.xml')
-                : <textarea value={source} onChange={e => setSource(e.target.value)} placeholder="Paste your XML, JSON, or CSV here..." rows={4}
+                : <textarea value={source} onChange={e => setSource(e.target.value)}
+                    placeholder="Paste your XML, JSON, or CSV here..." rows={4}
                     style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }} />
               }
             </div>
             <button onClick={addFeed} disabled={adding} style={{
-              width: '100%', padding: '11px', background: adding ? '#a0aec0' : '#534AB7', color: 'white',
-              border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
-            }}>{adding ? 'Adding...' : '➕ Add & Sync Feed'}</button>
+              width: '100%', padding: '11px', background: adding ? '#a0aec0' : '#534AB7',
+              color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
+              cursor: adding ? 'not-allowed' : 'pointer', fontFamily: 'inherit'
+            }}>{adding ? 'Adding...' : '➕ Add Feed'}</button>
           </div>
+
+          {/* Feed list */}
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#2d3748' }}>
             Active Feeds <span style={{ fontSize: 11, fontWeight: 400, color: '#718096' }}>— visible to all users</span>
           </div>
+
           {feeds.length === 0
             ? <div style={{ textAlign: 'center', padding: 24, color: '#a0aec0', fontSize: 12 }}>No feeds added yet.</div>
             : feeds.map(f => {
-              const statusColor = f.status === 'active' ? '#38a169' : f.status === 'error' ? '#e53e3e' : '#718096'
-              const synced = f.last_synced ? new Date(f.last_synced).toLocaleString() : 'Never'
+              const isSyncing    = syncingIds.has(f.id)
+              const statusColor  = f.status === 'active' ? '#38a169' : f.status === 'error' ? '#e53e3e' : f.status === 'syncing' ? '#3182ce' : '#718096'
+              const synced       = f.last_synced ? new Date(f.last_synced).toLocaleString() : 'Never'
+
               return (
-                <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 8, background: 'white' }}>
+                <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10, background: 'white' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 600, fontSize: 13 }}>{f.name}</span>
-                        <span style={{ padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: statusColor + '22', color: statusColor }}>{f.status}</span>
+                        <span style={{ padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600, background: statusColor + '22', color: statusColor }}>
+                          {isSyncing ? 'syncing...' : f.status}
+                        </span>
                         <span style={{ padding: '1px 7px', borderRadius: 10, fontSize: 10, background: '#f0f4f8', color: '#4a5568', textTransform: 'uppercase' }}>{f.feed_type}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#718096', marginTop: 3 }}>{f.job_count || 0} jobs · Last synced: {synced}</div>
-                      {f.error_msg && <div style={{ fontSize: 11, color: '#c53030', marginTop: 3 }}>⚠ {f.error_msg.substring(0, 100)}</div>}
+                      <div style={{ fontSize: 11, color: '#718096', marginTop: 3 }}>
+                        {f.job_count || 0} jobs · Last synced: {synced}
+                      </div>
+                      {f.error_msg && !isSyncing && (
+                        <div style={{ fontSize: 11, color: '#c53030', marginTop: 3 }}>⚠ {f.error_msg.substring(0, 100)}</div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button onClick={() => syncFeed(f.id)} disabled={syncing === f.id} style={{ padding: '5px 10px', background: '#ebf8ff', color: '#3182ce', border: '1px solid #bee3f8', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>
-                        {syncing === f.id ? '...' : '↺ Sync'}
+                      <button
+                        onClick={() => syncFeed(f.id)}
+                        disabled={isSyncing}
+                        style={{
+                          padding: '5px 10px',
+                          background: isSyncing ? '#f0f4f8' : '#ebf8ff',
+                          color: isSyncing ? '#a0aec0' : '#3182ce',
+                          border: `1px solid ${isSyncing ? '#e2e8f0' : '#bee3f8'}`,
+                          borderRadius: 6, fontSize: 11,
+                          cursor: isSyncing ? 'not-allowed' : 'pointer'
+                        }}>
+                        {isSyncing ? '⏳' : '↺ Sync'}
                       </button>
-                      <button onClick={() => deleteFeed(f.id, f.name)} style={{ padding: '5px 10px', background: 'white', color: '#e53e3e', border: '1px solid #fed7d7', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🗑</button>
+                      <button onClick={() => deleteFeed(f.id, f.name)} disabled={isSyncing} style={{ padding: '5px 10px', background: 'white', color: '#e53e3e', border: '1px solid #fed7d7', borderRadius: 6, fontSize: 11, cursor: isSyncing ? 'not-allowed' : 'pointer' }}>🗑</button>
                     </div>
                   </div>
+
+                  {/* Progress bar shown while syncing */}
+                  {isSyncing && (
+                    <SyncProgress
+                      feedId={f.id}
+                      onDone={(result) => handleSyncDone(f.id, result)}
+                    />
+                  )}
                 </div>
               )
-            })}
+            })
+          }
         </div>
+
         {toast && (
-          <div style={{ margin: '0 16px 16px', padding: '10px 14px', background: '#c6f6d5', color: '#22543d', border: '1px solid #9ae6b4', borderRadius: 8, fontSize: 13, textAlign: 'center' }}>{toast}</div>
+          <div style={{ margin: '0 16px 16px', padding: '10px 14px', background: '#c6f6d5', color: '#22543d', border: '1px solid #9ae6b4', borderRadius: 8, fontSize: 13, textAlign: 'center' }}>
+            {toast}
+          </div>
         )}
       </div>
     </div>
@@ -209,21 +315,21 @@ export default function Carriers() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
 
-  const [jobs, setJobs] = useState([])
-  const [feeds, setFeeds] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [minScore, setMinScore] = useState('0')
-  const [feedFilter, setFeedFilter] = useState('')
-  const [rulesOn, setRulesOn] = useState(false)
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
+  const [jobs, setJobs]               = useState([])
+  const [feeds, setFeeds]             = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
+  const [minScore, setMinScore]       = useState('0')
+  const [feedFilter, setFeedFilter]   = useState('')
+  const [rulesOn, setRulesOn]         = useState(false)
+  const [page, setPage]               = useState(1)
+  const [totalPages, setTotalPages]   = useState(1)
+  const [total, setTotal]             = useState(0)
   const [showFeedManager, setShowFeedManager] = useState(false)
-  const [syncing, setSyncing] = useState(null)
-  const [selected, setSelected] = useState(new Set())
-  const [expanded, setExpanded] = useState(null)
-  const [toast, setToast] = useState('')
+  const [syncingIds, setSyncingIds]   = useState(new Set())
+  const [selected, setSelected]       = useState(new Set())
+  const [expanded, setExpanded]       = useState(null)
+  const [toast, setToast]             = useState('')
   const searchTimer = useRef(null)
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
@@ -261,6 +367,39 @@ export default function Carriers() {
     searchTimer.current = setTimeout(() => loadJobs(1, minScore, feedFilter, rulesOn, v), 350)
   }
 
+  // Kick off background sync from the pill button — returns immediately
+  const syncFeedFromPill = async (feedId) => {
+    if (!isAdmin || syncingIds.has(feedId)) return
+    setSyncingIds(prev => new Set([...prev, feedId]))
+    try {
+      await client.post(`/api/feeds/feeds/${feedId}/sync`)
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const r = await client.get(`/api/feeds/feeds/${feedId}/sync-status`)
+          if (r.data.status === 'done') {
+            clearInterval(poll)
+            setSyncingIds(prev => { const n = new Set(prev); n.delete(feedId); return n })
+            showToast(`✓ Synced — ${r.data.jobs_parsed} jobs`)
+            loadFeeds()
+            loadJobs(1, minScore, feedFilter, rulesOn, search)
+          } else if (r.data.status === 'error') {
+            clearInterval(poll)
+            setSyncingIds(prev => { const n = new Set(prev); n.delete(feedId); return n })
+            showToast(`⚠ Sync error: ${r.data.error}`)
+            loadFeeds()
+          }
+        } catch (e) {
+          clearInterval(poll)
+          setSyncingIds(prev => { const n = new Set(prev); n.delete(feedId); return n })
+        }
+      }, 2000)
+    } catch (e) {
+      setSyncingIds(prev => { const n = new Set(prev); n.delete(feedId); return n })
+      showToast('Failed to start sync')
+    }
+  }
+
   const queueJob = async (jobId) => {
     try {
       await client.post(`/api/feeds/feeds/jobs/${jobId}/queue`)
@@ -278,18 +417,6 @@ export default function Carriers() {
       showToast(`Added ${r.data.queued} jobs to Outreach!`)
       loadJobs(page, minScore, feedFilter, rulesOn, search)
     } catch (e) { showToast('Failed') }
-  }
-
-  const syncFeed = async (feedId) => {
-    if (!isAdmin) return
-    setSyncing(feedId)
-    try {
-      const r = await client.post(`/api/feeds/feeds/${feedId}/sync`)
-      showToast(`Synced — ${r.data.jobs_parsed} jobs`)
-      loadFeeds()
-      loadJobs(1, minScore, feedFilter, rulesOn, search)
-    } catch (e) { showToast('Sync failed') }
-    finally { setSyncing(null) }
   }
 
   const rescore = async () => {
@@ -345,24 +472,34 @@ export default function Carriers() {
               background: !feedFilter ? '#534AB7' : 'white', color: !feedFilter ? 'white' : '#718096',
               border: `1px solid ${!feedFilter ? '#534AB7' : '#e2e8f0'}`
             }}>All feeds</button>
-            {feeds.map(f => (
-              <button key={f.id} onClick={() => setFeedFilter(String(f.id))} style={{
-                padding: '4px 12px', borderRadius: 16, fontSize: 11, cursor: 'pointer', flexShrink: 0,
-                background: feedFilter === String(f.id) ? '#534AB7' : 'white',
-                color: feedFilter === String(f.id) ? 'white' : '#718096',
-                border: `1px solid ${feedFilter === String(f.id) ? '#534AB7' : '#e2e8f0'}`,
-                display: 'flex', alignItems: 'center', gap: 4
-              }}>
-                {f.name}
-                <span style={{ opacity: 0.7 }}>({f.job_count || 0})</span>
-                {isAdmin && (
-                  <span onClick={e => { e.stopPropagation(); syncFeed(f.id) }}
-                    style={{ marginLeft: 2, color: feedFilter === String(f.id) ? 'rgba(255,255,255,0.8)' : '#3182ce', cursor: 'pointer', fontSize: 12 }}>
-                    {syncing === f.id ? '...' : '↺'}
-                  </span>
-                )}
-              </button>
-            ))}
+            {feeds.map(f => {
+              const isPillSyncing = syncingIds.has(f.id)
+              return (
+                <button key={f.id} onClick={() => setFeedFilter(String(f.id))} style={{
+                  padding: '4px 12px', borderRadius: 16, fontSize: 11, cursor: 'pointer', flexShrink: 0,
+                  background: feedFilter === String(f.id) ? '#534AB7' : 'white',
+                  color: feedFilter === String(f.id) ? 'white' : '#718096',
+                  border: `1px solid ${feedFilter === String(f.id) ? '#534AB7' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: 4
+                }}>
+                  {f.name}
+                  <span style={{ opacity: 0.7 }}>({f.job_count || 0})</span>
+                  {isAdmin && (
+                    <span
+                      onClick={e => { e.stopPropagation(); syncFeedFromPill(f.id) }}
+                      title={isPillSyncing ? 'Syncing...' : 'Sync this feed'}
+                      style={{
+                        marginLeft: 2,
+                        color: feedFilter === String(f.id) ? 'rgba(255,255,255,0.8)' : isPillSyncing ? '#a0aec0' : '#3182ce',
+                        cursor: isPillSyncing ? 'not-allowed' : 'pointer',
+                        fontSize: 12
+                      }}>
+                      {isPillSyncing ? '⏳' : '↺'}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         )}
 
@@ -430,34 +567,24 @@ export default function Carriers() {
             const isSel = selected.has(job.id)
             const isExp = expanded === job.id
 
-            // Pull raw_data — backend stores the full feed JSON here
             let raw = {}
-            try {
-              raw = typeof job.raw_data === 'string' ? JSON.parse(job.raw_data) : (job.raw_data || {})
-            } catch (e) {}
+            try { raw = typeof job.raw_data === 'string' ? JSON.parse(job.raw_data) : (job.raw_data || {}) } catch (e) {}
 
-            // Top-level columns (set by backend parser)
             const carrierName = job.carrier_name || raw.client_name || '—'
             const jobTitle    = job.job_title    || raw.job_title   || '—'
             const location    = job.location     || (raw.city && raw.state ? `${raw.city}, ${raw.state}` : '')
             const homeTime    = job.home_time    || raw.campaign_name_filter || raw.home_time || ''
             const weeklyPay   = job.weekly_pay   || null
             const cpm         = job.cpm          || null
-
-            // Extra schema fields from raw_data
             const driverType  = raw.driver_type  || ''
             const truckType   = raw.truck_type   || ''
             const licenseType = raw.license_type || ''
             const jobType     = raw.job_type     || ''
             const salary      = raw.salary || raw.base_salary || raw.pay || ''
-
-            // Content — from raw_data schema fields directly
-            const description  = stripHtml(raw.description      || job.description      || '')
-            const benefits     = stripHtml(raw.job_benefits      || job.job_benefits     || '')
-            const requirements = stripHtml(raw.job_requirements  || job.job_requirements || '')
-
-            // Full App link — application_link from schema (NOT base_url)
-            const appLink = raw.application_link || job.application_link || ''
+            const description  = stripHtml(raw.description     || job.description      || '')
+            const benefits     = stripHtml(raw.job_benefits     || job.job_benefits     || '')
+            const requirements = stripHtml(raw.job_requirements || job.job_requirements || '')
+            const appLink      = raw.application_link || job.application_link || ''
 
             return (
               <div key={job.id} id={`carrier-card-${job.id}`} style={{
@@ -466,10 +593,7 @@ export default function Carriers() {
                 border: `1px solid ${isSel ? '#3182ce' : isExp ? '#AFA9EC' : '#e2e8f0'}`,
                 transition: 'border-color 0.15s'
               }}>
-
-                {/* Summary row */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px' }}>
-                  {/* Checkbox */}
                   <div onClick={() => toggleSelect(job.id)} style={{
                     width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 2, cursor: 'pointer',
                     border: `2px solid ${isSel ? '#3182ce' : '#cbd5e0'}`,
@@ -477,7 +601,6 @@ export default function Carriers() {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'white'
                   }}>{isSel ? '✓' : ''}</div>
 
-                  {/* Info — tap to expand */}
                   <div onClick={() => handleExpand(job.id)} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
                     <div style={{ fontWeight: 600, fontSize: 13, color: '#1a202c', marginBottom: 1 }}>{carrierName}</div>
                     <div style={{ fontSize: 12, color: '#718096', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{jobTitle}</div>
@@ -497,18 +620,14 @@ export default function Carriers() {
                     </div>
                   </div>
 
-                  {/* Quick add */}
                   <button onClick={e => { e.stopPropagation(); queueJob(job.id) }} style={{
                     padding: '7px 12px', background: '#534AB7', color: 'white', border: 'none',
                     borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0
                   }}>Add</button>
                 </div>
 
-                {/* Expanded detail panel */}
                 {isExp && (
                   <div style={{ borderTop: '1px solid #f0f0f0', padding: '14px 14px 16px', background: '#fafbfc', borderRadius: '0 0 10px 10px' }}>
-
-                    {/* Pay tiles */}
                     {(weeklyPay || cpm || homeTime || salary) && (
                       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
                         {weeklyPay && (
@@ -538,7 +657,6 @@ export default function Carriers() {
                       </div>
                     )}
 
-                    {/* Meta chips */}
                     {(driverType || licenseType || truckType || jobType) && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                         {driverType  && <span style={{ padding: '3px 9px', background: '#EEEDFE', color: '#3C3489', border: '1px solid #AFA9EC', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{driverType}</span>}
@@ -548,7 +666,6 @@ export default function Carriers() {
                       </div>
                     )}
 
-                    {/* Description */}
                     {description && (
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>📋 Job Details</div>
@@ -558,7 +675,6 @@ export default function Carriers() {
                       </div>
                     )}
 
-                    {/* Benefits */}
                     {benefits && (
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>🏆 Benefits</div>
@@ -568,7 +684,6 @@ export default function Carriers() {
                       </div>
                     )}
 
-                    {/* Requirements */}
                     {requirements && (
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>✅ Requirements</div>
@@ -578,12 +693,10 @@ export default function Carriers() {
                       </div>
                     )}
 
-                    {/* Source */}
                     {job.feed_name && (
                       <div style={{ fontSize: 11, color: '#a0aec0', marginBottom: 12 }}>📡 Source: {job.feed_name}</div>
                     )}
 
-                    {/* Action buttons */}
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => queueJob(job.id)} style={{
                         flex: 1, padding: '11px', background: '#534AB7', color: 'white', border: 'none',
@@ -611,13 +724,18 @@ export default function Carriers() {
       {totalPages > 1 && (
         <div style={{ background: 'white', borderTop: '1px solid #e2e8f0', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <span style={{ fontSize: 12, color: '#718096', flex: 1 }}>Page {page} of {totalPages} · {total} jobs</span>
-          <button onClick={() => loadJobs(page - 1, minScore, feedFilter, rulesOn, search)} disabled={page <= 1} style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 6, fontSize: 12, cursor: 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>‹ Prev</button>
-          <button onClick={() => loadJobs(page + 1, minScore, feedFilter, rulesOn, search)} disabled={page >= totalPages} style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 6, fontSize: 12, cursor: 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>Next ›</button>
+          <button onClick={() => loadJobs(page - 1, minScore, feedFilter, rulesOn, search)} disabled={page <= 1}
+            style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 6, fontSize: 12, cursor: 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>‹ Prev</button>
+          <button onClick={() => loadJobs(page + 1, minScore, feedFilter, rulesOn, search)} disabled={page >= totalPages}
+            style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: 'white', borderRadius: 6, fontSize: 12, cursor: 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>Next ›</button>
         </div>
       )}
 
       {isAdmin && showFeedManager && (
-        <FeedManager onClose={() => setShowFeedManager(false)} onRefresh={() => { loadFeeds(); loadJobs(1, minScore, feedFilter, rulesOn, search) }} />
+        <FeedManager
+          onClose={() => setShowFeedManager(false)}
+          onRefresh={() => { loadFeeds(); loadJobs(1, minScore, feedFilter, rulesOn, search) }}
+        />
       )}
 
       {toast && (
