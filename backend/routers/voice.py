@@ -9,7 +9,8 @@ from db.database import db, row_to_dict
 from db.auth import get_current_user
 from agent.carrier_lookup import lookup_recruiting_numbers, load_all_cached
 from agent.voice import (
-    dispatch_call, get_call_status, analyze_call_transcript,
+    dispatch_call, dispatch_onboarding_call, analyze_onboarding_transcript,
+    save_onboarding_data, get_call_status, analyze_call_transcript,
     load_call_log, BLAND_API_KEY
 )
 import agent.voice as voice_module
@@ -94,11 +95,22 @@ class TestCallRequest(BaseModel):
 
 
 class ScheduleRequest(BaseModel):
-    scheduled_at: Optional[str] = None   # ISO datetime string
+    scheduled_at: Optional[str] = None
     meeting_notes: Optional[str] = ""
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+class OnboardingCallRequest(BaseModel):
+    phone: str
+    voice: Optional[str] = "maya"
+
+
+class OnboardingSaveRequest(BaseModel):
+    call_id: str
+    profile: dict
+    rules: dict
+
+
+# ── Config endpoints ──────────────────────────────────────────────────────────
 
 @router.post("/config")
 def set_voice_config(request: ConfigRequest, user: dict = Depends(get_current_user)):
@@ -118,6 +130,89 @@ def get_voice_config(user: dict = Depends(get_current_user)):
         "webhook_url": voice_module.WEBHOOK_BASE_URL,
     }
 
+
+# ── Onboarding call endpoints ─────────────────────────────────────────────────
+
+@router.post("/onboarding-call")
+async def start_onboarding_call(request: OnboardingCallRequest, user: dict = Depends(get_current_user)):
+    """Dispatch a call to the driver to collect their profile + rules via conversation."""
+    if not voice_module.BLAND_API_KEY:
+        raise HTTPException(status_code=400, detail="Voice agent not configured.")
+
+    user_id = int(user["sub"])
+
+    with db() as cur:
+        cur.execute("SELECT first_name FROM users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+    first_name = row_to_dict(row).get("first_name", "there") if row else "there"
+
+    result = await dispatch_onboarding_call(
+        phone=request.phone,
+        user_id=user_id,
+        first_name=first_name,
+        voice=request.voice or "maya",
+    )
+    return result
+
+
+@router.get("/onboarding-result/{call_id}")
+async def get_onboarding_result(call_id: str, user: dict = Depends(get_current_user)):
+    """
+    Poll this endpoint after the onboarding call.
+    Returns call status. When completed, returns extracted profile + rules data.
+    """
+    if not voice_module.BLAND_API_KEY:
+        raise HTTPException(status_code=400, detail="Voice agent not configured.")
+
+    data = await get_call_status(call_id)
+    status = data.get("status", "")
+    answered_by = data.get("answered_by", "")
+
+    # Still in progress
+    if status not in ("completed", "ended", "failed", "error"):
+        return {"status": "in_progress", "bland_status": status}
+
+    # Failed / no answer
+    if status in ("failed", "error") or answered_by == "no-answer":
+        return {"status": "failed", "bland_status": status, "answered_by": answered_by}
+
+    # Get transcript
+    transcript = data.get("concatenated_transcript") or ""
+    if not transcript and data.get("transcripts"):
+        parts = data["transcripts"]
+        if isinstance(parts, list):
+            transcript = " ".join(t.get("text", "") for t in parts if isinstance(t, dict))
+
+    if not transcript or len(transcript.strip()) < 50:
+        # Call completed but transcript not ready yet — tell frontend to keep polling
+        raw_length = data.get("call_length") or 0
+        duration = int(float(raw_length) * 60) if raw_length else 0
+        if duration < 10:
+            return {"status": "failed", "bland_status": status, "reason": "Call too short — not answered or hung up immediately"}
+        return {"status": "processing", "bland_status": status}
+
+    # Analyze transcript
+    analysis = await analyze_onboarding_transcript(call_id, transcript)
+
+    return {
+        "status":   "complete",
+        "profile":  analysis.get("profile", {}),
+        "rules":    analysis.get("rules", {}),
+        "missing":  analysis.get("missing", []),
+        "summary":  analysis.get("summary", ""),
+        "transcript_length": len(transcript),
+    }
+
+
+@router.post("/onboarding-save")
+async def save_onboarding(request: OnboardingSaveRequest, user: dict = Depends(get_current_user)):
+    """Save the confirmed profile + rules data after driver reviews the onboarding results."""
+    user_id = int(user["sub"])
+    result = await save_onboarding_data(user_id, request.profile, request.rules)
+    return {"success": True, **result}
+
+
+# ── Recruiter call endpoints ──────────────────────────────────────────────────
 
 @router.post("/dispatch")
 async def dispatch_voice_call(request: CallRequest, user: dict = Depends(get_current_user)):
@@ -212,29 +307,39 @@ async def bland_webhook(request: Request):
     answered_by = payload.get("answered_by", "")
     metadata    = payload.get("metadata") or {}
 
+    call_type          = metadata.get("call_type", "")
     outreach_record_id = metadata.get("outreach_record_id", "")
-    user_id = int(metadata.get("user_id", 0))
+    user_id            = int(metadata.get("user_id", 0))
 
-    if not outreach_record_id:
+    if not outreach_record_id and call_type != "onboarding":
         log = load_call_log()
         entry = next((e for e in log if e.get("call_id") == call_id), None)
         if entry:
             outreach_record_id = entry.get("outreach_record_id", "")
             user_id = int(entry.get("user_id", 0))
 
-    print(f"[Webhook] {call_id} | {status} | answered_by={answered_by} | {duration}s")
+    print(f"[Webhook] {call_id} | {status} | type={call_type} | answered_by={answered_by} | {duration}s")
 
-    if status == "completed" and outreach_record_id and user_id:
-        update_outreach_record(outreach_record_id, user_id, {
-            "call_duration_seconds": int(duration or 0),
-        })
-        if transcript:
-            await analyze_call_transcript(call_id, outreach_record_id, transcript)
-        elif answered_by == "voicemail":
-            update_outreach_record(outreach_record_id, user_id, {
-                "status": "contacted",
-                "outcome_notes": "Left voicemail. Awaiting callback.",
+    if status == "completed":
+        if call_type == "onboarding":
+            # Onboarding calls are analyzed on-demand via GET /onboarding-result/{call_id}
+            # Just update the call log status here
+            from agent.voice import _db_update_call_log
+            _db_update_call_log(call_id, {
+                "status": "completed",
+                "duration_seconds": int(float(duration or 0) * 60),
             })
+        elif outreach_record_id and user_id:
+            update_outreach_record(outreach_record_id, user_id, {
+                "call_duration_seconds": int(duration or 0),
+            })
+            if transcript:
+                await analyze_call_transcript(call_id, outreach_record_id, transcript)
+            elif answered_by == "voicemail":
+                update_outreach_record(outreach_record_id, user_id, {
+                    "status": "contacted",
+                    "outcome_notes": "Left voicemail. Awaiting callback.",
+                })
 
     return JSONResponse({"ok": True})
 
@@ -242,7 +347,6 @@ async def bland_webhook(request: Request):
 @router.get("/call-log")
 def get_call_log_endpoint(user: dict = Depends(get_current_user)):
     user_id = int(user["sub"])
-    from agent.voice import load_call_log
     calls = load_call_log(user_id=user_id)
     return {"calls": calls, "total": len(calls)}
 
@@ -319,22 +423,17 @@ async def analyze_call(call_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/schedule/{record_id}")
 def schedule_meeting(record_id: str, request: ScheduleRequest, user: dict = Depends(get_current_user)):
-    """Set or update a scheduled meeting time. Moves status to 'scheduled'."""
     user_id = int(user["sub"])
     record = get_outreach_record(record_id, user_id)
     if not record:
         raise HTTPException(status_code=404, detail="Outreach record not found.")
 
-    updates = {
-        "status":        "scheduled",
-        "meeting_notes": request.meeting_notes or "",
-    }
+    updates = {"status": "scheduled", "meeting_notes": request.meeting_notes or ""}
 
     if request.scheduled_at:
         try:
             dt = datetime.fromisoformat(request.scheduled_at.replace("Z", ""))
-            dt = dt.replace(tzinfo=None)  # Store as naive local time
-                # Store as-is without UTC conversion — treat as naive local time
+            dt = dt.replace(tzinfo=None)
             updates["scheduled_at"] = dt
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid datetime. Use ISO 8601 e.g. 2026-04-08T14:00:00")
@@ -345,16 +444,12 @@ def schedule_meeting(record_id: str, request: ScheduleRequest, user: dict = Depe
 
 @router.delete("/schedule/{record_id}")
 def clear_meeting(record_id: str, user: dict = Depends(get_current_user)):
-    """Clear a scheduled meeting and move status back to interested."""
     user_id = int(user["sub"])
     record = get_outreach_record(record_id, user_id)
     if not record:
         raise HTTPException(status_code=404, detail="Outreach record not found.")
-
     update_outreach_record(record_id, user_id, {
-        "status":        "interested",
-        "scheduled_at":  None,
-        "meeting_notes": "",
+        "status": "interested", "scheduled_at": None, "meeting_notes": "",
     })
     return {"success": True}
 

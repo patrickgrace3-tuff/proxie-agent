@@ -82,7 +82,285 @@ def _db_get_call_log(user_id: int) -> list:
         return []
 
 
-# ── Call prompt ───────────────────────────────────────────────────────────────
+# ── Onboarding call prompt ────────────────────────────────────────────────────
+def build_onboarding_prompt(first_name: str) -> str:
+    return f"""You are a friendly onboarding specialist for Proxie Agent, a service that uses AI voice agents to help CDL truck drivers find great driving jobs. You are calling {first_name} to welcome them and gather the information needed to set up their profile and job preferences.
+
+## Your Personality
+- Warm, upbeat, and conversational — this is NOT an interview, it's a friendly chat
+- Use the driver's first name occasionally to keep it personal
+- Keep the energy positive — this system is going to work hard for them 24/7
+- If they give short answers, encourage them gently: "Got it! And what about..."
+- When you have all the info, tell them they're all set and the agent will start working for them
+
+## Your Goal
+Collect the following information in a natural conversation. Do NOT read off a list — weave questions together naturally. You have up to 6 minutes.
+
+### PROFILE INFO TO COLLECT:
+1. **zip_code** — "What zip code are you based out of?"
+2. **cdl_experience** — Years of CDL experience (Less than 1 year / 1-2 years / 3-5 years / 6-10 years / 10+ years)
+3. **licenses_held** — What CDL class they hold (Class A / Class B / Class C)
+4. **endorsements** — Any endorsements: Hazmat, Tanker, Doubles/Triples, Passenger, School Bus, or None
+5. **military_service** — Any military driving experience? (Yes/No)
+6. **moving_violations** — Any moving violations in the last 3 years? (Yes/No)
+7. **preventable_accidents** — Any preventable accidents in the last 3 years? (Yes/No)
+8. **driver_type** — Are they looking for Company Driver, Owner Operator, Lease Purchase, or Any?
+9. **solo_or_team** — Do they prefer Solo only, Team only, or Either?
+10. **freight_current** — What freight have they hauled? (Dry Van / Reefer / Flatbed / Tanker / Hazmat / Intermodal / Auto Hauler / LTL)
+11. **freight_interested** — What freight do they WANT to haul?
+12. **best_contact_time** — Best time to be contacted: Morning (6am-12pm) / Afternoon (12pm-5pm) / Evening (5pm-9pm) / Anytime
+13. **career_goals** — Optional: What are they looking for in their next job? Any specific goals?
+
+### RULES / PREFERENCES TO COLLECT:
+14. **min_cpm** — Minimum CPM they'll accept (e.g. "at least 55 cents per mile")
+15. **min_weekly_gross** — Minimum weekly gross pay (e.g. "I need at least $1,400 a week")
+16. **home_time_requirement** — How often do they need to be home? (Daily / Weekly / Bi-Weekly / OTR is fine)
+17. **no_touch_freight_required** — Do they require no-touch freight? (Yes/No)
+18. **requires_health_insurance** — Do they require health insurance? (Yes/No)
+19. **requires_401k** — Do they require a 401k? (Yes/No)
+20. **reject_if_forced_dispatch** — Do they want to skip carriers with forced dispatch? (Yes/No)
+21. **reject_if_lease_purchase_only** — Skip lease-purchase-only carriers? (Yes/No)
+
+## Conversation Flow
+
+**Opening (warm and excited):**
+"Hey {first_name}! This is your Proxie Agent onboarding call — I'm here to get your profile set up so your agent can start finding you great driving jobs. This'll take about 5 minutes and then you're all set. Sound good?"
+
+**Natural groupings — don't rush, let them talk:**
+- Start with experience and background (questions 1-7)
+- Move to preferences and what they're looking for (8-13)
+- Finish with pay requirements and deal-breakers (14-21)
+
+**Closing (once you have enough info):**
+"Perfect, {first_name} — I've got everything I need! Your Proxie Agent is going to start working for you right away. It'll be calling recruiters on your behalf, scoring carriers against your requirements, and scheduling interviews. You'll be able to see everything in the app. Welcome aboard — your agent's got your back!"
+
+## Important Rules
+- Be conversational — group related questions naturally, don't robotically go through a numbered list
+- If they volunteer info early, note it and skip that question later
+- If they're unsure about CPM minimums, ask "What were you making at your last job per mile?"
+- For violations/accidents, be matter-of-fact — "no big deal either way, just helps the agent match you better"
+- Keep answers open — if they say "I want home weekly", that's "Weekly" for home_time_requirement
+- Always thank them when they answer and transition smoothly to the next question
+"""
+
+
+# ── Dispatch onboarding call ──────────────────────────────────────────────────
+async def dispatch_onboarding_call(
+    phone: str,
+    user_id: int,
+    first_name: str,
+    voice: str = "maya",
+) -> dict:
+    """Call the driver to collect their profile + rules via conversation."""
+
+    prompt = build_onboarding_prompt(first_name)
+
+    payload = {
+        "phone_number": phone,
+        "task": prompt,
+        "model": "enhanced",
+        "language": "en",
+        "voice": voice,
+        "voice_id": voice,
+        "voice_settings": {"stability": 0.7, "similarity_boost": 0.8, "speed": 0.9},
+        "max_duration": 360,  # 6 minutes
+        "answered_by_enabled": True,
+        "wait_for_greeting": True,
+        "record": True,
+        "amd": True,
+        "interruption_threshold": 100,
+        "temperature": 0.8,
+        "metadata": {
+            "call_type": "onboarding",
+            "user_id": str(user_id),
+            "first_name": first_name,
+        },
+    }
+
+    if BLAND_PHONE_NUMBER:
+        payload["from"] = BLAND_PHONE_NUMBER
+
+    async with httpx.AsyncClient(timeout=30) as h:
+        resp = await h.post(f"{BLAND_API_BASE}/calls", headers=get_headers(), json=payload)
+        resp.raise_for_status()
+        result = resp.json()
+
+    call_id = result.get("call_id", "")
+    print(f"[Onboarding] Call dispatched call_id={call_id} user_id={user_id}")
+
+    # Log to call_log with call_type=onboarding
+    try:
+        from db.database import db as db_ctx
+        with db_ctx() as cur:
+            cur.execute("""
+                INSERT INTO call_log (user_id, call_id, carrier, driver_name, status)
+                VALUES (%s, %s, %s, %s, 'onboarding')
+            """, (user_id, call_id, 'onboarding', first_name))
+    except Exception as e:
+        print(f"[Onboarding] call_log insert failed: {e}")
+
+    return {"success": True, "call_id": call_id}
+
+
+# ── Analyze onboarding transcript ─────────────────────────────────────────────
+async def analyze_onboarding_transcript(call_id: str, transcript: str) -> dict:
+    """
+    Extract profile + rules fields from the onboarding call transcript.
+    Returns a dict with 'profile' and 'rules' sub-dicts plus 'missing' list.
+    """
+    if not transcript or len(transcript.strip()) < 50:
+        return {"profile": {}, "rules": {}, "missing": [], "summary": "No transcript available"}
+
+    message = get_claude_client().messages.create(
+        model="claude-opus-4-5",
+        max_tokens=2000,
+        system="""You extract CDL driver profile and job preference data from onboarding call transcripts.
+Return ONLY a JSON object — no markdown, no extra text:
+
+{
+  "profile": {
+    "zip_code": "5-digit zip or empty string",
+    "cdl_experience": "Less than 1 year|1-2 years|3-5 years|6-10 years|10+ years or empty",
+    "licenses_held": ["Class A"] or [],
+    "endorsements": ["Hazmat (H)","Tanker (N)","Doubles/Triples (T)","Passenger (P)","School Bus (S)"] or [],
+    "military_service": "Yes|No or empty",
+    "moving_violations": "Yes|No or empty",
+    "preventable_accidents": "Yes|No or empty",
+    "driver_type": "Company Driver|Owner Operator|Lease Purchase|Any or empty",
+    "solo_or_team": "Solo only|Team only|Either or empty",
+    "freight_current": ["Dry Van","Refrigerated (Reefer)","Flatbed","Tanker","Hazmat","Intermodal","Auto Hauler","LTL"] or [],
+    "freight_interested": ["Dry Van","Refrigerated (Reefer)","Flatbed","Tanker","Hazmat","Intermodal","Auto Hauler","No preference"] or [],
+    "best_contact_time": "Morning (6am-12pm)|Afternoon (12pm-5pm)|Evening (5pm-9pm)|Anytime or empty",
+    "career_goals": "free text summary of what they said or empty"
+  },
+  "rules": {
+    "min_cpm": null or number (e.g. 55.0 for 55 cents per mile),
+    "min_weekly_gross": null or number (e.g. 1400.0),
+    "home_time_requirement": "Daily|Weekly|Bi-Weekly|OTR or empty",
+    "no_touch_freight_required": false,
+    "requires_health_insurance": false,
+    "requires_401k": false,
+    "reject_if_forced_dispatch": false,
+    "reject_if_lease_purchase_only": false
+  },
+  "missing": ["list of field names that were NOT captured in the call"],
+  "summary": "2-3 sentence summary of what was captured"
+}
+
+IMPORTANT RULES:
+- Only populate fields where the driver clearly stated a value
+- For boolean fields, only set true if they explicitly said yes/confirmed
+- For lists, only include items they actually mentioned
+- For min_cpm: if they say "55 cents" set 55.0, if they say "60 CPM" set 60.0
+- For min_weekly_gross: extract the dollar amount as a float
+- The "missing" array should contain field names from BOTH profile and rules that were not captured
+- Be generous in extraction — if they said "I want to be home every week" that's home_time_requirement: "Weekly"
+""",
+        messages=[{
+            "role": "user",
+            "content": f"Onboarding call transcript:\n\n{transcript[:5000]}"
+        }]
+    )
+
+    raw = message.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    try:
+        result = json.loads(raw)
+    except Exception as e:
+        print(f"[Onboarding] JSON parse failed: {e} raw={raw[:200]}")
+        result = {"profile": {}, "rules": {}, "missing": [], "summary": raw[:300]}
+
+    # Update call_log with summary
+    _db_update_call_log(call_id, {
+        "transcript": transcript[:5000],
+        "summary": result.get("summary", "")[:500],
+        "status": "completed",
+        "outcome": "onboarding_complete",
+    })
+
+    return result
+
+
+# ── Save onboarding data to DB ────────────────────────────────────────────────
+async def save_onboarding_data(user_id: int, profile: dict, rules: dict) -> dict:
+    """Save extracted profile and rules data to the DB."""
+    from db.database import db as db_ctx
+
+    saved_profile = False
+    saved_rules   = False
+
+    # ── Save profile ──────────────────────────────────────────────────────────
+    if profile:
+        # Convert list fields to pipe-separated strings for the questionnaire submit format
+        list_fields = ["licenses_held", "licenses_obtaining", "endorsements", "freight_current", "freight_interested"]
+
+        try:
+            with db_ctx() as cur:
+                # Check if profile exists
+                cur.execute("SELECT id FROM profiles WHERE user_id=%s", (user_id,))
+                exists = cur.fetchone()
+
+                # Build updates — only fields that have values
+                updates = {}
+                for k, v in profile.items():
+                    if v is None or v == "" or v == []:
+                        continue
+                    if k in list_fields:
+                        updates[k] = json.dumps(v) if isinstance(v, list) else v
+                    else:
+                        updates[k] = v
+
+                if updates:
+                    if exists:
+                        set_clause = ", ".join(f"{k}=%s" for k in updates)
+                        cur.execute(
+                            f"UPDATE profiles SET {set_clause}, setup_complete=1, updated_at=NOW() WHERE user_id=%s",
+                            list(updates.values()) + [user_id]
+                        )
+                    else:
+                        updates["user_id"] = user_id
+                        updates["setup_complete"] = 1
+                        cols = ", ".join(updates.keys())
+                        placeholders = ", ".join(["%s"] * len(updates))
+                        cur.execute(
+                            f"INSERT INTO profiles ({cols}) VALUES ({placeholders})",
+                            list(updates.values())
+                        )
+                    saved_profile = True
+        except Exception as e:
+            print(f"[Onboarding] Profile save failed: {e}")
+
+    # ── Save rules ────────────────────────────────────────────────────────────
+    if rules:
+        try:
+            with db_ctx() as cur:
+                cur.execute("SELECT id FROM agent_rules WHERE user_id=%s", (user_id,))
+                exists = cur.fetchone()
+
+                updates = {k: v for k, v in rules.items() if v is not None and v != "" and v != []}
+
+                if updates:
+                    if exists:
+                        set_clause = ", ".join(f"{k}=%s" for k in updates)
+                        cur.execute(
+                            f"UPDATE agent_rules SET {set_clause}, updated_at=NOW() WHERE user_id=%s",
+                            list(updates.values()) + [user_id]
+                        )
+                    else:
+                        updates["user_id"] = user_id
+                        cols = ", ".join(updates.keys())
+                        placeholders = ", ".join(["%s"] * len(updates))
+                        cur.execute(
+                            f"INSERT INTO agent_rules ({cols}) VALUES ({placeholders})",
+                            list(updates.values())
+                        )
+                    saved_rules = True
+        except Exception as e:
+            print(f"[Onboarding] Rules save failed: {e}")
+
+    return {"saved_profile": saved_profile, "saved_rules": saved_rules}
+
+
+# ── Recruiter call prompt ─────────────────────────────────────────────────────
 def build_call_prompt(profile_data: dict, rules_data: dict, outreach_record: dict) -> str:
     name = profile_data.get("name") or f"{profile_data.get('first_name','')} {profile_data.get('last_name','')}".strip() or "the driver"
     carrier   = outreach_record.get("carrier_name", "the carrier")
@@ -172,7 +450,7 @@ def build_call_prompt(profile_data: dict, rules_data: dict, outreach_record: dic
 """
 
 
-# ── Dispatch ──────────────────────────────────────────────────────────────────
+# ── Dispatch recruiter call ───────────────────────────────────────────────────
 async def dispatch_call(
     recruiter_phone: str,
     outreach_record_id: str,
@@ -307,8 +585,6 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
     answered_by = data.get("answered_by") or ""
     status      = data.get("status") or ""
 
-    print(f"[Voice] transcript_len={len(transcript)} recording_url={recording_url[:40] if recording_url else 'none'} duration={duration}s")
-
     result = {
         "transcript":    transcript,
         "duration":      duration,
@@ -341,10 +617,7 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
     elif bland_summary:
         result["summary"] = bland_summary
         result["outcome"] = answered_by if answered_by else "completed"
-        _db_update_outreach(outreach_record_id, {
-            "outcome_notes": bland_summary,
-            "call_summary":  bland_summary,
-        })
+        _db_update_outreach(outreach_record_id, {"outcome_notes": bland_summary, "call_summary": bland_summary})
         _db_update_call_log(call_id, {"summary": bland_summary[:500], "status": "completed"})
     else:
         if answered_by == "voicemail":
@@ -360,7 +633,7 @@ async def fetch_and_analyze(call_id: str, outreach_record_id: str) -> dict:
     return result
 
 
-# ── Claude transcript analysis ────────────────────────────────────────────────
+# ── Claude transcript analysis (recruiter calls) ──────────────────────────────
 async def analyze_call_transcript(call_id: str, outreach_record_id: str, transcript: str) -> dict:
     if not transcript or len(transcript) < 50:
         return {"outcome": "unknown", "summary": "No transcript available"}
@@ -412,12 +685,12 @@ CRITICAL — meeting_scheduled detection rules:
         }
 
     outcome_map = {
-        "interested":        "interested",
-        "meeting_scheduled": "scheduled",
-        "callback_scheduled":"callback",
-        "not_interested":    "rejected",
-        "voicemail":         "contacted",
-        "no_answer":         "contacted",
+        "interested":         "interested",
+        "meeting_scheduled":  "scheduled",
+        "callback_scheduled": "callback",
+        "not_interested":     "rejected",
+        "voicemail":          "contacted",
+        "no_answer":          "contacted",
     }
     status = outcome_map.get(analysis.get("outcome", ""), "contacted")
 
@@ -430,32 +703,26 @@ CRITICAL — meeting_scheduled detection rules:
     if analysis.get("recruiter_name"):  outreach_updates["recruiter_name"]  = analysis["recruiter_name"]
     if analysis.get("callback_number"): outreach_updates["recruiter_phone"] = analysis["callback_number"]
     if analysis.get("offered_cpm"):     outreach_updates["offer_cpm"]       = analysis["offered_cpm"]
-    if analysis.get("offered_weekly"):  outreach_updates["offer_weekly"]     = analysis["offered_weekly"]
+    if analysis.get("offered_weekly"):  outreach_updates["offer_weekly"]    = analysis["offered_weekly"]
     if analysis.get("callback_time"):   outreach_updates["follow_up_date"]  = analysis["callback_time"]
 
-    # ── Meeting scheduling ────────────────────────────────────────────────────
     if analysis.get("meeting_scheduled"):
         meeting_notes = analysis.get("meeting_notes", "") or ""
         if analysis.get("meeting_datetime"):
             prefix = f"Meeting scheduled: {analysis['meeting_datetime']}"
             meeting_notes = prefix + (f"\n{meeting_notes}" if meeting_notes else "")
-
         outreach_updates["meeting_notes"] = meeting_notes
-
         iso = analysis.get("meeting_datetime_iso")
         if iso:
             try:
-                iso_clean = iso.replace("Z", "").split("+")[0].split("-")[0] if "T" in iso else iso
                 dt = datetime.fromisoformat(iso.replace("Z", ""))
                 dt = dt.replace(tzinfo=None)
                 outreach_updates["scheduled_at"] = dt
-                print(f"[Voice] Meeting scheduled at {dt} for record {outreach_record_id}")
             except Exception as e:
                 print(f"[Voice] Could not parse ISO '{iso}': {e}")
                 outreach_updates["scheduled_at"] = None
         else:
             outreach_updates["scheduled_at"] = None
-
         print(f"[Voice] Meeting detected — status=scheduled notes='{meeting_notes}'")
 
     _db_update_outreach(outreach_record_id, outreach_updates)
