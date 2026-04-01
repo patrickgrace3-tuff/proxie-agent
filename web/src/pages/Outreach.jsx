@@ -45,10 +45,6 @@ function ScoreBar({ score }) {
 }
 
 // ── Meeting time helpers ──────────────────────────────────────────────────────
-// Read the correct local time from meeting_notes text first (avoids UTC timezone shift).
-// Notes written by Claude contain e.g. "Meeting scheduled: Wednesday, April 1 at 11:00 AM"
-// which is always the correct local time — unlike scheduled_at which is stored as UTC.
-
 function extractMeetingDisplay(scheduledAt, meetingNotes) {
   if (meetingNotes) {
     const match = meetingNotes.match(/Meeting scheduled:\s*(.+?)(?:\n|$)/i)
@@ -68,15 +64,11 @@ function buildCalendarLink(scheduledAt, meetingNotes) {
   if (!scheduledAt && !meetingNotes) return null
   try {
     let startMs = null
-
-    // Try to parse time from notes text e.g. "Meeting scheduled: Wednesday, April 1 at 11:00 AM"
     if (meetingNotes) {
       const match = meetingNotes.match(/Meeting scheduled:\s*(.+?)(?:\n|$)/i)
       if (match) {
         const str = match[1].trim()
-        // Extract time component e.g. "11:00 AM"
         const timeMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i)
-        // Extract date component e.g. "April 1" or "Apr 1"
         const dateMatch = str.match(/([A-Za-z]+)\s+(\d{1,2})(?:,?\s*(\d{4}))?/)
         if (timeMatch && dateMatch) {
           let hours   = parseInt(timeMatch[1])
@@ -92,11 +84,8 @@ function buildCalendarLink(scheduledAt, meetingNotes) {
         }
       }
     }
-
-    // Fallback to scheduled_at
     if (!startMs && scheduledAt) startMs = new Date(scheduledAt).getTime()
     if (!startMs) return null
-
     const fmt = (ms) => new Date(ms).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
     const params = new URLSearchParams({
       action:  'TEMPLATE',
@@ -111,13 +100,11 @@ function buildCalendarLink(scheduledAt, meetingNotes) {
 // ── Meeting Badge ─────────────────────────────────────────────────────────────
 function MeetingBadge({ scheduledAt, meetingNotes }) {
   if (!scheduledAt && !meetingNotes) return null
-
   const displayTime  = extractMeetingDisplay(scheduledAt, meetingNotes)
   const calendarLink = buildCalendarLink(scheduledAt, meetingNotes)
   const notesBody    = meetingNotes
     ? meetingNotes.replace(/^Meeting scheduled:.*(\n|$)/i, '').trim()
     : ''
-
   return (
     <div style={{ background: '#EEEDFE', border: '1px solid #AFA9EC', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -125,12 +112,8 @@ function MeetingBadge({ scheduledAt, meetingNotes }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
             📅 Meeting Scheduled
           </div>
-          {displayTime && (
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#26215C' }}>{displayTime}</div>
-          )}
-          {notesBody && (
-            <div style={{ fontSize: 11, color: '#534AB7', marginTop: 3, lineHeight: 1.5 }}>{notesBody}</div>
-          )}
+          {displayTime && <div style={{ fontSize: 14, fontWeight: 700, color: '#26215C' }}>{displayTime}</div>}
+          {notesBody && <div style={{ fontSize: 11, color: '#534AB7', marginTop: 3, lineHeight: 1.5 }}>{notesBody}</div>}
         </div>
         {calendarLink && (
           <a href={calendarLink} target="_blank" rel="noreferrer" style={{
@@ -149,7 +132,7 @@ function ScheduleModal({ rec, onClose, onSaved }) {
   const [datetime, setDatetime] = useState(
     rec.scheduled_at ? new Date(rec.scheduled_at).toISOString().slice(0, 16) : ''
   )
-  const [notes, setNotes] = useState(rec.meeting_notes || '')
+  const [notes, setNotes]   = useState(rec.meeting_notes || '')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
@@ -189,20 +172,12 @@ function ScheduleModal({ rec, onClose, onSaved }) {
           Set the date and time agreed on with the recruiter at <strong>{rec.carrier_name}</strong>.
         </div>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#718096', marginBottom: 6 }}>Date & Time</label>
-        <input
-          type="datetime-local"
-          value={datetime}
-          onChange={e => setDatetime(e.target.value)}
-          style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, outline: 'none', marginBottom: 14, fontFamily: 'inherit', boxSizing: 'border-box' }}
-        />
+        <input type="datetime-local" value={datetime} onChange={e => setDatetime(e.target.value)}
+          style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, outline: 'none', marginBottom: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#718096', marginBottom: 6 }}>Notes (optional)</label>
-        <textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
+        <textarea value={notes} onChange={e => setNotes(e.target.value)}
           placeholder="e.g. Confirm with Sarah at ext 204, call their main line first"
-          rows={3}
-          style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', marginBottom: 20, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
-        />
+          rows={3} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', marginBottom: 20, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
         <div style={{ display: 'flex', gap: 10 }}>
           {rec.scheduled_at && (
             <button onClick={clear} disabled={saving} style={{
@@ -478,8 +453,8 @@ function ActionButtons({ rec, onUpdate, onCall, onFmcsa, onViewFmcsa, onDelete, 
 
 // ── Call Modal ────────────────────────────────────────────────────────────────
 function CallModal({ rec, onClose, onDispatched }) {
-  const [phone, setPhone] = useState(rec?.recruiter_phone || '')
-  const [name, setName]   = useState(rec?.recruiter_name || '')
+  const [phone, setPhone]     = useState(rec?.recruiter_phone || '')
+  const [name, setName]       = useState(rec?.recruiter_name || '')
   const [loading, setLoading] = useState(false)
 
   const dispatch = async () => {
@@ -553,11 +528,13 @@ export default function Outreach() {
 
   useEffect(() => { load() }, [load])
 
+  // ── Update status in-place — card stays open, no full reload ──────────────
   const updateStatus = async (id, status) => {
     try {
       await client.post('/api/carriers/update-status', { record_id: id, status })
       showToast('Status updated')
-      load()
+      // Update the record in-place so the card stays open and buttons refresh
+      setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
     } catch (e) { showToast('Update failed', 'error') }
   }
 
@@ -566,6 +543,7 @@ export default function Outreach() {
     try {
       await client.delete(`/api/carriers/outreach-record/${id}`)
       setRecords(prev => prev.filter(r => r.id !== id))
+      if (expanded === id) setExpanded(null)
       showToast('Removed')
     } catch (e) { showToast('Delete failed', 'error') }
   }
@@ -585,7 +563,8 @@ export default function Outreach() {
         setFmcsaLoading(null)
         return
       }
-      await load()
+      // Update record in-place with FMCSA data so card stays open
+      setRecords(prev => prev.map(r => r.id === id ? { ...r, fmcsa_data: fmcsaData } : r))
       setFmcsaSheet({ data: fmcsaData, carrierName: name })
       setToast('')
     } catch (e) {
@@ -613,7 +592,7 @@ export default function Outreach() {
     }
   }
 
-  const counts  = records.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc }, {})
+  const counts   = records.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc }, {})
   const filtered = records.filter(r => {
     if (activeTab !== 'all' && r.status !== activeTab) return false
     if (search) {
@@ -761,12 +740,12 @@ export default function Outreach() {
                     ) : (
                       <ActionButtons
                         rec={rec}
-                        onUpdate={(id, status) => { updateStatus(id, status); setExpanded(null) }}
-                        onCall={r => { setCallRec(r); setExpanded(null) }}
+                        onUpdate={updateStatus}
+                        onCall={r => setCallRec(r)}
                         onFmcsa={fmcsaCheck}
                         onViewFmcsa={() => viewFmcsa(rec)}
-                        onDelete={(id, name) => { deleteRecord(id, name); setExpanded(null) }}
-                        onSchedule={() => { setScheduleRec(rec); setExpanded(null) }}
+                        onDelete={deleteRecord}
+                        onSchedule={() => setScheduleRec(rec)}
                       />
                     )}
                   </div>
